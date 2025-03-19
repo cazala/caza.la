@@ -1,3 +1,5 @@
+import { logger } from './logging';
+
 export class Vector {
   x: number;
   y: number;
@@ -32,7 +34,10 @@ export class Vector {
   }
 
   div(s: number): Vector {
-    if (!s) console.log("Division by zero!");
+    if (!s) {
+      logger.warn('Division by zero!');
+      return this;
+    }
     this.x /= s;
     this.y /= s;
     return this;

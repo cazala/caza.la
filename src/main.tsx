@@ -1,19 +1,23 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
 // Removing index.css import to prevent style conflicts
-import App from "./App.tsx";
+import App from './App.tsx';
+import './index.css';
+import { logger } from './lib/logging';
+import { config } from './lib/config';
 
-// Add console log for debugging
-console.log("Main script running, mounting App component");
+// Add info log for app initialization
+logger.info(`App initializing in ${config.getEnvironment()} environment`);
+logger.info('Main script running, mounting App component');
 
-const rootElement = document.getElementById("root");
+const rootElement = document.getElementById('root');
 if (rootElement) {
-  createRoot(rootElement).render(
-    <StrictMode>
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
       <App />
-    </StrictMode>
+    </React.StrictMode>
   );
-  console.log("App mounted successfully");
+  logger.info('App mounted successfully');
 } else {
-  console.error("Root element not found");
+  logger.error('Root element not found');
 }

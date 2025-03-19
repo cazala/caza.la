@@ -1,4 +1,6 @@
-import { Vector } from "./Vector";
+import { Vector } from './Vector';
+import { FISH, MATH, SIMULATION } from './constants';
+import { drawFishConnections, drawFishShape } from './drawing-utils';
 
 export interface World {
   width: number;
@@ -34,118 +36,55 @@ export class Fish {
   chaseList: Fish[] | null = null;
   shoalList: Fish[] | null = null;
 
-  constructor(mass: number, x: number, y: number, color: string = "#000000") {
+  constructor(mass: number, x: number, y: number, color: string = FISH.DEFAULT_COLOR) {
     this.ID = Fish.uid();
     this.mass = mass;
-    this.maxspeed = 12 * this.mass;
-    this.maxforce = 0.1 / this.mass;
-    this.separationRange = this.mass * 30;
-    this.lookRange = this.mass * 200;
-    this.length = mass * 20;
-    this.base = this.length * 0.5;
-    this.HALF_PI = Math.PI * 0.5;
-    this.RAD_TO_DEG = 57.29577951308232;
+    this.maxspeed = FISH.MAX_SPEED_MULTIPLIER * this.mass;
+    this.maxforce = FISH.MAX_FORCE_DIVISOR / this.mass;
+    this.separationRange = this.mass * FISH.SEPARATION_RANGE_MULTIPLIER;
+    this.lookRange = this.mass * FISH.LOOK_RANGE_MULTIPLIER;
+    this.length = mass * FISH.LENGTH_MULTIPLIER;
+    this.base = this.length * FISH.BASE_MULTIPLIER;
+    this.HALF_PI = MATH.HALF_PI;
+    this.RAD_TO_DEG = MATH.RAD_TO_DEG;
     this.location = new Vector(x, y);
     this.velocity = new Vector(
-      (Math.random() * 2 - 1) * this.maxspeed * 0.5,
-      (Math.random() * 2 - 1) * this.maxspeed * 0.5
+      (Math.random() * FISH.INITIAL_VELOCITY_RANGE - 1) *
+        this.maxspeed *
+        FISH.INITIAL_VELOCITY_FACTOR,
+      (Math.random() * FISH.INITIAL_VELOCITY_RANGE - 1) *
+        this.maxspeed *
+        FISH.INITIAL_VELOCITY_FACTOR
     );
     this.acceleration = new Vector(0, 0);
-    this.wandering = new Vector(0.2, 0.2);
+    this.wandering = new Vector(FISH.RANDOM_WANDER_VECTOR, FISH.RANDOM_WANDER_VECTOR);
     this.color = color;
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
     this.drawBehavior(ctx);
-
-    const angle = this.velocity.angle();
-
-    const x1 = this.location.x + Math.cos(angle) * this.base;
-    const y1 = this.location.y + Math.sin(angle) * this.base;
-
-    const x = this.location.x - Math.cos(angle) * this.length;
-    const y = this.location.y - Math.sin(angle) * this.length;
-
-    const x2 = this.location.x + Math.cos(angle + this.HALF_PI) * this.base;
-    const y2 = this.location.y + Math.sin(angle + this.HALF_PI) * this.base;
-
-    const x3 = this.location.x + Math.cos(angle - this.HALF_PI) * this.base;
-    const y3 = this.location.y + Math.sin(angle - this.HALF_PI) * this.base;
-
-    // Make sure fish are visible
-    ctx.lineWidth = 2;
-    ctx.fillStyle = this.color || "#000000";
-    ctx.strokeStyle = this.color || "#000000";
-
-    // Save current state
-    ctx.save();
-
-    // Ensure global alpha is set properly
-    ctx.globalAlpha = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(x2, y2, x, y);
-    ctx.quadraticCurveTo(x3, y3, x1, y1);
-    ctx.stroke();
-    ctx.fill();
-
-    // Restore previous state
-    ctx.restore();
+    drawFishShape(ctx, this);
   }
 
   drawBehavior(ctx: CanvasRenderingContext2D): void {
     if (Fish.showBehavior) {
-      const oldAlpha = ctx.globalAlpha;
-      ctx.globalAlpha = 0.2;
-
-      if (this.avoidList && this.avoidList.length) {
-        ctx.strokeStyle = "blue";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        for (const fish of this.avoidList) {
-          ctx.moveTo(this.location.x, this.location.y);
-          ctx.lineTo(fish.location.x, fish.location.y);
-        }
-        ctx.stroke();
-      }
-
-      if (this.chaseList && this.chaseList.length) {
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        for (const fish of this.chaseList) {
-          ctx.moveTo(this.location.x, this.location.y);
-          ctx.lineTo(fish.location.x, fish.location.y);
-        }
-        ctx.stroke();
-      }
-
-      if (this.shoalList && this.shoalList.length) {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = "black";
-        ctx.beginPath();
-        for (const fish of this.shoalList) {
-          ctx.moveTo(this.location.x, this.location.y);
-          ctx.lineTo(fish.location.x, fish.location.y);
-        }
-        ctx.stroke();
-      }
+      drawFishConnections(ctx, this, this.avoidList, FISH.AVOID_COLOR, 4);
+      drawFishConnections(ctx, this, this.chaseList, FISH.CHASE_COLOR, 4);
+      drawFishConnections(ctx, this, this.shoalList, FISH.SHOAL_COLOR, 1);
 
       this.avoidList = null;
       this.chaseList = null;
       this.shoalList = null;
-      ctx.globalAlpha = oldAlpha;
     } else {
-      this.color = "black";
+      this.color = FISH.DEFAULT_COLOR;
     }
   }
 
   update(): void {
     this.velocity.add(this.acceleration);
     this.velocity.limit(this.maxspeed);
-    if (this.velocity.mag() < 2) {
-      this.velocity.setMag(5);
+    if (this.velocity.mag() < FISH.MIN_VELOCITY_MAG) {
+      this.velocity.setMag(FISH.DEFAULT_VELOCITY_MAG);
     }
     this.location.add(this.velocity);
     this.acceleration.mul(0);
@@ -156,20 +95,20 @@ export class Fish {
   }
 
   boundaries(world: World): void {
-    if (this.location.x < 50) {
-      this.applyForce(new Vector(this.maxforce * 3, 0));
+    if (this.location.x < SIMULATION.BOUNDARY_DISTANCE) {
+      this.applyForce(new Vector(this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER, 0));
     }
 
-    if (this.location.x > world.width - 50) {
-      this.applyForce(new Vector(-this.maxforce * 3, 0));
+    if (this.location.x > world.width - SIMULATION.BOUNDARY_DISTANCE) {
+      this.applyForce(new Vector(-this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER, 0));
     }
 
-    if (this.location.y < 50) {
-      this.applyForce(new Vector(0, this.maxforce * 3));
+    if (this.location.y < SIMULATION.BOUNDARY_DISTANCE) {
+      this.applyForce(new Vector(0, this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER));
     }
 
-    if (this.location.y > world.height - 50) {
-      this.applyForce(new Vector(0, -this.maxforce * 3));
+    if (this.location.y > world.height - SIMULATION.BOUNDARY_DISTANCE) {
+      this.applyForce(new Vector(0, -this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER));
     }
   }
 
@@ -180,7 +119,27 @@ export class Fish {
         const diff = this.location.copy().sub(creature.location);
         const a = this.velocity.angleBetween(diff);
         const d = this.location.dist(creature.location);
-        if (d < radius && (a < angle / 2 || a > Math.PI * 2 - angle / 2)) {
+        if (d < radius && (a < angle / 2 || a > MATH.FULL_CIRCLE - angle / 2)) {
+          neighbors.push(creature);
+        }
+      }
+    }
+    return neighbors;
+  }
+
+  /**
+   * Filter a list of nearby fish to only include those in the fish's field of view
+   * @param nearbyFish List of fish that are spatially close
+   * @param angle The field of view angle
+   * @returns Fish that are within the field of view
+   */
+  filterVisibleNeighbors(nearbyFish: Fish[], angle: number): Fish[] {
+    const neighbors: Fish[] = [];
+    for (const creature of nearbyFish) {
+      if (creature !== this) {
+        const diff = this.location.copy().sub(creature.location);
+        const a = this.velocity.angleBetween(diff);
+        if (a < angle / 2 || a > MATH.FULL_CIRCLE - angle / 2) {
           neighbors.push(creature);
         }
       }
@@ -189,13 +148,13 @@ export class Fish {
   }
 
   wander(): void {
-    if (Math.random() < 0.05) {
-      this.wandering.rotate(Math.PI * 2 * Math.random());
+    if (Math.random() < FISH.WANDERING_CHANGE_PROBABILITY) {
+      this.wandering.rotate(MATH.FULL_CIRCLE * Math.random());
     }
     this.velocity.add(this.wandering);
 
     if (Fish.showBehavior) {
-      this.color = "gray";
+      this.color = FISH.WANDER_COLOR;
     }
   }
 
@@ -207,11 +166,11 @@ export class Fish {
     }
 
     for (const creature of creatures) {
-      this.applyForce(creature.attract(this, 50));
+      this.applyForce(creature.attract(this, FISH.ATTRACTION_FORCE));
     }
 
     if (Fish.showBehavior) {
-      this.color = "red";
+      this.color = FISH.CHASE_COLOR;
     }
   }
 
@@ -225,7 +184,7 @@ export class Fish {
       dest.setMag(this.maxspeed);
     }
 
-    this.applyForce(dest.limit(this.maxforce * 2));
+    this.applyForce(dest.limit(this.maxforce * FISH.FOLLOW_FORCE_MULTIPLIER));
   }
 
   seek(target: Vector): Vector {
@@ -240,7 +199,12 @@ export class Fish {
   attract(body: Fish, f: number): Vector {
     const force = this.location.copy().sub(body.location);
     let distance = force.mag();
-    distance = distance < 5 ? 5 : distance > 25 ? 25 : distance;
+    distance =
+      distance < FISH.MIN_ATTRACTION_DISTANCE
+        ? FISH.MIN_ATTRACTION_DISTANCE
+        : distance > FISH.MAX_ATTRACTION_DISTANCE
+          ? FISH.MAX_ATTRACTION_DISTANCE
+          : distance;
     force.normalize();
 
     const strength = (f * this.mass * body.mass) / (distance * distance);
@@ -305,22 +269,20 @@ export class Fish {
   shoal(neighbors: Fish[]): void {
     this.shoalList = neighbors;
 
-    const sep = this.separate(neighbors, this.separationRange).limit(
-      this.maxforce
-    );
+    const sep = this.separate(neighbors, this.separationRange).limit(this.maxforce);
     const ali = this.align(neighbors).limit(this.maxforce);
     const cohe = this.cohesion(neighbors).limit(this.maxforce);
 
-    sep.mul(1.4);
-    ali.mul(1.2);
-    cohe.mul(1);
+    sep.mul(FISH.SEPARATION_WEIGHT);
+    ali.mul(FISH.ALIGNMENT_WEIGHT);
+    cohe.mul(FISH.COHESION_WEIGHT);
 
     this.applyForce(sep);
     this.applyForce(ali);
     this.applyForce(cohe);
 
     if (Fish.showBehavior) {
-      this.color = "black";
+      this.color = FISH.SHOAL_COLOR;
     }
   }
 
@@ -329,13 +291,13 @@ export class Fish {
     for (const creature of creatures) {
       const d = this.location.dist(creature.location);
       if (d < dist) {
-        const v = creature.location.copy().sub(this.location).mul(-100);
+        const v = creature.location.copy().sub(this.location).mul(-FISH.WANDER_FORCE_MULTIPLIER);
         this.applyForce(v);
       }
     }
 
     if (Fish.showBehavior) {
-      this.color = "blue";
+      this.color = FISH.AVOID_COLOR;
     }
   }
 }

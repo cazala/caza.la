@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Simulation } from "../lib/Simulation";
-
-// Create a global reference to the simulation to ensure we only have one instance
-let globalSimulation: Simulation | null = null;
+import { useEffect, useRef, useState } from 'react';
+import { Simulation, SimulationOptions } from '../lib/Simulation';
+import { logger } from '../lib/logging';
 
 const FishCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Store simulation instance in a ref
+  const simulationRef = useRef<Simulation | null>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -20,39 +20,55 @@ const FishCanvas: React.FC = () => {
       });
     };
 
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Initialize simulation
   useEffect(() => {
     if (canvasRef.current) {
-      console.log("Canvas element found, initializing simulation");
+      logger.info('Canvas element found, initializing simulation');
 
       // Make sure canvas is properly sized before initializing simulation
       const canvas = canvasRef.current;
       canvas.width = dimensions.width;
       canvas.height = dimensions.height;
 
+      // Also update the style directly to ensure visibility
+      canvas.style.width = `${dimensions.width}px`;
+      canvas.style.height = `${dimensions.height}px`;
+
       try {
-        // Only initialize if not already initialized globally
-        if (!globalSimulation) {
-          console.log("Creating new global simulation instance");
-          globalSimulation = new Simulation(canvas);
-          console.log("Simulation initialized successfully");
-        } else {
-          console.log("Using existing global simulation instance");
+        // Clean up existing simulation if it exists
+        if (simulationRef.current) {
+          logger.info('Cleaning up existing simulation instance');
+          simulationRef.current.cleanup();
+          simulationRef.current = null;
         }
+
+        // Create a new simulation instance
+        const simulationOptions: SimulationOptions = {
+          canvasElement: canvas,
+          numFish: Math.min((window.innerWidth / 600) * 50, 50),
+        };
+
+        logger.info('Creating new simulation instance');
+        simulationRef.current = new Simulation(simulationOptions);
+        logger.info('Simulation initialized successfully');
       } catch (error) {
-        console.error("Error initializing simulation:", error);
+        logger.error('Error initializing simulation:', error);
       }
     } else {
-      console.error("Canvas element not found");
+      logger.error('Canvas element not found');
     }
 
     return () => {
-      // We don't clean up the global simulation on component unmount
-      // as it should persist across hot reloads
+      // Clean up the simulation when component unmounts
+      if (simulationRef.current) {
+        logger.info('Cleaning up simulation on component unmount');
+        simulationRef.current.cleanup();
+        simulationRef.current = null;
+      }
     };
   }, [dimensions]);
 
@@ -74,13 +90,13 @@ const FishCanvas: React.FC = () => {
     };
 
     // Add event listeners
-    document.addEventListener("click", handleClick);
+    document.addEventListener('click', handleClick);
 
     // Log to verify this effect is running
-    console.log("Setting up keyboard focus handling");
+    logger.info('Setting up keyboard focus handling');
 
     return () => {
-      document.removeEventListener("click", handleClick);
+      document.removeEventListener('click', handleClick);
     };
   }, []);
 
@@ -91,14 +107,16 @@ const FishCanvas: React.FC = () => {
       height={dimensions.height}
       tabIndex={0} // Make canvas focusable
       style={{
-        position: "absolute",
+        position: 'absolute',
         top: 0,
         left: 0,
-        width: "100%",
-        height: "100%",
-        zIndex: -1,
-        display: "block", // Ensure it's displayed as block
-        outline: "none", // Remove focus outline
+        width: '100%',
+        height: '100%',
+        zIndex: 0, // Change from -1 to 0 to ensure it's not hidden
+        display: 'block', // Ensure it's displayed as block
+        outline: 'none', // Remove focus outline
+        background: 'transparent', // Ensure background is transparent
+        pointerEvents: 'auto', // Make sure it receives mouse events
       }}
     />
   );

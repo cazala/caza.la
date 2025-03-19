@@ -1,63 +1,99 @@
-import { Fish, World } from "./Fish";
-import { Vector } from "./Vector";
+import { Fish, World } from './Fish';
+import { Vector } from './Vector';
+import { logger } from './logging';
+import { FISH, SIMULATION, MATH } from './constants';
+import {
+  updatePositionFromEvent,
+  isQuickInteraction,
+  shouldIgnoreMouseAfterTouch,
+} from './event-utils';
+import { categorizeFishByMass } from './behavior-utils';
+import { SpatialGrid } from './SpatialGrid';
+
+export interface SimulationOptions {
+  canvasElement: HTMLCanvasElement;
+  // Additional configuration options
+  numFish?: number;
+  initialInterval?: number;
+}
 
 export class Simulation {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private static mouse: Vector = new Vector(0, 0);
+  private mouse: Vector = new Vector(0, 0);
   private world: World = {
     width: 0,
     height: 0,
     creatures: [],
   };
-  private static follow: boolean = false;
+  private follow: boolean = false;
   private slowmo: boolean = false;
-  private static mouseDownTime: number | null = null;
-  private interval: number = 20;
-  private alpha: number = 1;
+  private mouseDownTime: number | null = null;
+  private interval: number;
+  private alpha: number = SIMULATION.DEFAULT_ALPHA;
   private timeline: number | null = null;
-  private static eventListenersInitialized = false;
-  // Define a threshold for what counts as a "quick click" (in milliseconds)
-  private static CLICK_THRESHOLD = 300;
-  // Static reference to the current simulation instance for event handlers
-  private static currentInstance: Simulation | null = null;
+  // Flag to show fish behavior visualization
+  private showBehavior: boolean = false;
 
-  // === Touch Event Handling ===
-  // On mobile devices, browsers generate both touch events and synthetic mouse events.
-  // This causes issues with behavior toggling as it can happen twice (once for touch, once for mouse).
-  // The following variables help prevent duplicate handling of the same user interaction.
+  // Spatial partitioning grid
+  private spatialGrid: SpatialGrid;
 
-  // Flag to detect if user is on a touch-capable device
-  private static isTouchDevice: boolean = false;
-  // Timestamp of the last touch event to create a window during which mouse events are ignored
-  private static lastTouchTime: number = 0;
-  // Time window (in ms) after a touch event during which mouse events should be ignored
-  private static readonly TOUCH_MOUSE_PREVENTION_TIMEOUT = 500;
+  // Track if user is on a touch device
+  private isTouchDevice: boolean = false;
+  // Timestamp of the last touch event
+  private lastTouchTime: number = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas;
-    const context = canvas.getContext("2d");
+  // Event handlers (stored to allow removal)
+  private boundMouseMoveHandler: (e: MouseEvent) => void;
+  private boundMouseDownHandler: (e: MouseEvent) => void;
+  private boundMouseUpHandler: (e: MouseEvent) => void;
+  private boundKeyDownHandler: (e: KeyboardEvent) => void;
+  private boundKeyUpHandler: (e: KeyboardEvent) => void;
+  private boundTouchStartHandler: (e: TouchEvent) => void;
+  private boundTouchMoveHandler: (e: TouchEvent) => void;
+  private boundTouchEndHandler: (e: TouchEvent) => void;
+  private boundResizeHandler: () => void;
+
+  // Track highlighted fish index
+  private highlightedFishIndex: number | undefined;
+
+  constructor(options: SimulationOptions) {
+    this.canvas = options.canvasElement;
+    const context = this.canvas.getContext('2d');
     if (!context) {
-      throw new Error("Could not get canvas context");
+      throw new Error('Could not get canvas context');
     }
     this.ctx = context;
+    this.interval = options.initialInterval || SIMULATION.NORMAL_INTERVAL;
 
-    console.log(`Canvas size: ${canvas.width}x${canvas.height}`);
+    logger.info(`Canvas size: ${this.canvas.width}x${this.canvas.height}`);
 
     // Initialize world dimensions
-    this.world.width = canvas.width;
-    this.world.height = canvas.height;
+    this.world.width = this.canvas.width;
+    this.world.height = this.canvas.height;
 
-    // Store reference to current instance for event handlers
-    Simulation.currentInstance = this;
+    // Initialize spatial grid
+    this.spatialGrid = new SpatialGrid(
+      this.world.width,
+      this.world.height,
+      SIMULATION.SPATIAL_CELL_SIZE
+    );
+    logger.info('Spatial grid initialized');
 
-    if (!Simulation.eventListenersInitialized) {
-      this.setupEventListeners();
-      Simulation.eventListenersInitialized = true;
-    }
+    // Set up bound event handlers to allow removal
+    this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
+    this.boundMouseDownHandler = this.handleMouseDown.bind(this);
+    this.boundMouseUpHandler = this.handleMouseUp.bind(this);
+    this.boundKeyDownHandler = this.handleKeyDown.bind(this);
+    this.boundKeyUpHandler = this.handleKeyUp.bind(this);
+    this.boundTouchStartHandler = this.handleTouchStart.bind(this);
+    this.boundTouchMoveHandler = this.handleTouchMove.bind(this);
+    this.boundTouchEndHandler = this.handleTouchEnd.bind(this);
+    this.boundResizeHandler = this.resize.bind(this);
 
+    this.setupEventListeners();
     this.resize();
-    this.initFish();
+    this.initFish(options.numFish);
 
     // Draw once immediately to ensure fish are visible
     this.timestep();
@@ -66,247 +102,296 @@ export class Simulation {
     this.start();
   }
 
-  private setupEventListeners(): void {
-    console.log("Setting up event listeners");
+  // Instance methods for event handling
+  private handleMouseMove(e: MouseEvent): void {
+    if (
+      shouldIgnoreMouseAfterTouch(
+        this.isTouchDevice,
+        this.lastTouchTime,
+        SIMULATION.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      )
+    ) {
+      return;
+    }
+    updatePositionFromEvent(e, this.mouse);
+  }
 
-    window.addEventListener("mousemove", (e) => {
-      // Skip updating mouse position if this is a touch device and touch was recent
-      // This prevents duplicate processing when mobile browsers trigger synthetic mouse events after touch
-      if (
-        Simulation.isTouchDevice &&
-        Date.now() - Simulation.lastTouchTime <
-          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
-      ) {
-        return;
-      }
-      Simulation.mouse.set(e.clientX, e.clientY);
-    });
+  private handleMouseDown(): void {
+    if (
+      shouldIgnoreMouseAfterTouch(
+        this.isTouchDevice,
+        this.lastTouchTime,
+        SIMULATION.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      )
+    ) {
+      return;
+    }
+    this.follow = true;
+    this.mouseDownTime = Date.now();
+    logger.info('Mouse down event triggered, follow set to:', this.follow);
+  }
 
-    window.addEventListener("mousedown", () => {
-      // Skip mousedown if this is a touch device and touch was recent
-      // This prevents double-triggering behaviors on mobile devices
-      if (
-        Simulation.isTouchDevice &&
-        Date.now() - Simulation.lastTouchTime <
-          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
-      ) {
-        return;
-      }
-      Simulation.follow = true;
-      Simulation.mouseDownTime = Date.now();
-      console.log(
-        "Mouse down event triggered, follow set to:",
-        Simulation.follow
-      );
-    });
+  private handleKeyDown(e: KeyboardEvent): void {
+    logger.info('Key down event triggered:', e.key);
+  }
 
-    // Add keydown event listener for debugging
-    window.addEventListener("keydown", (e) => {
-      console.log("Key down event triggered:", e.key);
-    });
+  private handleKeyUp(e: KeyboardEvent): void {
+    logger.info('Key up event triggered:', e.key);
 
-    // Improve keyup event handler
-    window.addEventListener("keyup", (e) => {
-      console.log("Key up event triggered:", e.key);
-
-      // Make sure we have a current instance
-      if (Simulation.currentInstance) {
-        if (e.key === " " || e.key === "Spacebar") {
-          console.log("Space key detected, toggling slowmo");
-          if (Simulation.currentInstance.slowmo) {
-            Simulation.currentInstance.fast();
-          } else {
-            Simulation.currentInstance.slow();
-          }
-          Simulation.currentInstance.slowmo =
-            !Simulation.currentInstance.slowmo;
-        }
-      }
-    });
-
-    const handleMouseUp = () => {
-      // Skip mouseup if this is a touch device and touch was recent
-      // This prevents the fish behavior from being toggled twice on mobile
-      // (once by touchend and again by the simulated mouseup)
-      if (
-        Simulation.isTouchDevice &&
-        Date.now() - Simulation.lastTouchTime <
-          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
-      ) {
-        return;
-      }
-
-      Simulation.follow = false;
-      const currentTime = Date.now();
-
-      // Only toggle behavior if it was a quick click
-      if (
-        Simulation.mouseDownTime &&
-        currentTime - Simulation.mouseDownTime < Simulation.CLICK_THRESHOLD
-      ) {
-        console.log("Quick click detected, toggling behavior");
-        Fish.showBehavior = !Fish.showBehavior;
+    if (e.key === ' ' || e.key === 'Spacebar') {
+      logger.info('Space key detected, toggling slowmo');
+      if (this.slowmo) {
+        this.fast();
       } else {
-        console.log("Not a quick click, just stopping follow");
+        this.slow();
       }
+      this.slowmo = !this.slowmo;
+    }
+  }
 
-      Simulation.mouseDownTime = null;
-    };
+  private handleMouseUp(): void {
+    if (
+      shouldIgnoreMouseAfterTouch(
+        this.isTouchDevice,
+        this.lastTouchTime,
+        SIMULATION.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      )
+    ) {
+      return;
+    }
 
-    window.addEventListener("mouseup", handleMouseUp);
+    this.follow = false;
 
-    // === TOUCH EVENT HANDLERS ===
-    // Touch events happen first on mobile, followed by synthetic mouse events.
-    // We handle the touch events properly and then ignore the subsequent mouse events.
+    // Only toggle behavior if it was a quick click
+    if (isQuickInteraction(this.mouseDownTime, SIMULATION.CLICK_THRESHOLD)) {
+      logger.info('Quick click detected, toggling behavior');
+      this.showBehavior = !this.showBehavior;
+      Fish.showBehavior = this.showBehavior; // Keep for backward compatibility
+    } else {
+      logger.info('Not a quick click, just stopping follow');
+    }
 
-    document.body.addEventListener(
-      "touchstart",
-      (e) => {
-        // Mark that this is a touch device - this helps ignore subsequent mouse events
-        Simulation.isTouchDevice = true;
-        Simulation.lastTouchTime = Date.now();
+    this.mouseDownTime = null;
+  }
 
-        Simulation.follow = true;
-        Simulation.mouseDownTime = Date.now();
-        const touchobj = e.changedTouches[0];
-        Simulation.mouse.set(touchobj.clientX, touchobj.clientY);
-      },
-      false
-    );
+  private handleTouchStart(e: TouchEvent): void {
+    // Mark that this is a touch device - this helps ignore subsequent mouse events
+    this.isTouchDevice = true;
+    this.lastTouchTime = Date.now();
 
-    document.body.addEventListener(
-      "touchmove",
-      (e) => {
-        // Update touch timestamp to continue ignoring synthetic mouse events
-        Simulation.lastTouchTime = Date.now();
-        const touchobj = e.changedTouches[0];
-        Simulation.mouse.set(touchobj.clientX, touchobj.clientY);
-        e.preventDefault();
-      },
-      false
-    );
+    this.follow = true;
+    this.mouseDownTime = Date.now();
+    updatePositionFromEvent(e.changedTouches[0], this.mouse);
+  }
 
-    document.body.addEventListener(
-      "touchend",
-      (e) => {
-        // Update touch timestamp to ignore upcoming synthetic mouse events
-        Simulation.lastTouchTime = Date.now();
-        Simulation.follow = false;
-        const currentTime = Date.now();
+  private handleTouchMove(e: TouchEvent): void {
+    // Update touch timestamp to continue ignoring synthetic mouse events
+    this.lastTouchTime = Date.now();
+    updatePositionFromEvent(e.changedTouches[0], this.mouse);
+    e.preventDefault();
+  }
 
-        // Only toggle behavior if it was a quick tap
-        if (
-          Simulation.mouseDownTime &&
-          currentTime - Simulation.mouseDownTime < Simulation.CLICK_THRESHOLD
-        ) {
-          console.log("Quick tap detected, toggling behavior");
-          Fish.showBehavior = !Fish.showBehavior;
-        }
+  private handleTouchEnd(e: TouchEvent): void {
+    // Update touch timestamp to ignore upcoming synthetic mouse events
+    this.lastTouchTime = Date.now();
+    this.follow = false;
 
-        Simulation.mouseDownTime = null;
+    // Only toggle behavior if it was a quick tap
+    if (isQuickInteraction(this.mouseDownTime, SIMULATION.CLICK_THRESHOLD)) {
+      logger.info('Quick tap detected, toggling behavior');
+      this.showBehavior = !this.showBehavior;
+      Fish.showBehavior = this.showBehavior; // Keep for backward compatibility
+    }
 
-        // Keep the multi-touch gesture for toggling behavior
-        if (e.changedTouches.length >= 2) {
-          Fish.showBehavior = !Fish.showBehavior;
-        }
-      },
-      false
-    );
+    this.mouseDownTime = null;
 
-    window.addEventListener("resize", () => this.resize());
+    // Keep the multi-touch gesture for toggling behavior
+    if (e.changedTouches.length >= 2) {
+      this.showBehavior = !this.showBehavior;
+      Fish.showBehavior = this.showBehavior; // Keep for backward compatibility
+    }
+  }
+
+  private setupEventListeners(): void {
+    logger.info('Setting up event listeners for simulation instance');
+
+    window.addEventListener('mousemove', this.boundMouseMoveHandler);
+    window.addEventListener('mousedown', this.boundMouseDownHandler);
+    window.addEventListener('mouseup', this.boundMouseUpHandler);
+    window.addEventListener('keydown', this.boundKeyDownHandler);
+    window.addEventListener('keyup', this.boundKeyUpHandler);
+    document.body.addEventListener('touchstart', this.boundTouchStartHandler, false);
+    document.body.addEventListener('touchmove', this.boundTouchMoveHandler, false);
+    document.body.addEventListener('touchend', this.boundTouchEndHandler, false);
+    window.addEventListener('resize', this.boundResizeHandler);
+
+    logger.info('All event listeners attached successfully');
+  }
+
+  public cleanup(): void {
+    logger.info('Starting simulation cleanup process');
+
+    // Stop the animation
+    this.stop();
+    logger.info('Animation stopped');
+
+    // Remove event listeners
+    logger.info('Removing event listeners');
+    window.removeEventListener('mousemove', this.boundMouseMoveHandler);
+    window.removeEventListener('mousedown', this.boundMouseDownHandler);
+    window.removeEventListener('mouseup', this.boundMouseUpHandler);
+    window.removeEventListener('keydown', this.boundKeyDownHandler);
+    window.removeEventListener('keyup', this.boundKeyUpHandler);
+    document.body.removeEventListener('touchstart', this.boundTouchStartHandler);
+    document.body.removeEventListener('touchmove', this.boundTouchMoveHandler);
+    document.body.removeEventListener('touchend', this.boundTouchEndHandler);
+    window.removeEventListener('resize', this.boundResizeHandler);
+
+    logger.info('Simulation cleanup completed');
   }
 
   private resize(): void {
-    console.log("Resizing simulation");
+    logger.info('Resizing simulation');
 
     // Update world dimensions
     this.world.width = this.canvas.width;
     this.world.height = this.canvas.height;
 
-    console.log(
-      `New world dimensions: ${this.world.width}x${this.world.height}`
-    );
+    logger.info(`New world dimensions: ${this.world.width}x${this.world.height}`);
+
+    // Update spatial grid dimensions
+    this.spatialGrid.resize(this.world.width, this.world.height);
+    logger.info('Spatial grid resized');
 
     // Make sure fish are within the new boundaries
     for (const fish of this.world.creatures) {
       if (fish.location.x > this.world.width) {
-        fish.location.x = this.world.width - 100;
+        fish.location.x = this.world.width - SIMULATION.RESIZE_PADDING;
       }
       if (fish.location.y > this.world.height) {
-        fish.location.y = this.world.height - 100;
+        fish.location.y = this.world.height - SIMULATION.RESIZE_PADDING;
       }
     }
   }
 
-  private initFish(): void {
+  private initFish(numFish?: number): void {
     // Clear any existing fish
     this.world.creatures = [];
 
-    // Calculate number of fish based on screen size
-    const numFish = Math.min((window.innerWidth / 600) * 50, 50);
-    console.log(`Creating ${numFish} fish`);
+    // Calculate number of fish based on screen size or use provided value
+    const fishCount = numFish || Math.min((window.innerWidth / 600) * 50, 50);
+    logger.info(`Initializing ${fishCount} fish for simulation`);
 
     // Create fish with random positions and sizes
-    for (let i = 0; i < numFish; i++) {
-      const mass =
-        0.5 + Math.random() * Math.random() * Math.random() * Math.random() * 2;
+    for (let i = 0; i < fishCount; i++) {
+      const mass = 0.5 + Math.random() * Math.random() * Math.random() * Math.random() * 2;
       const x = Math.random() * this.world.width;
       const y = Math.random() * this.world.height;
 
-      console.log(`Fish ${i}: mass=${mass}, position=(${x}, ${y})`);
+      logger.debug(
+        `Creating fish ${i}: mass=${mass.toFixed(2)}, position=(${x.toFixed(0)}, ${y.toFixed(0)})`
+      );
 
       this.world.creatures.push(new Fish(mass, x, y));
     }
+
+    logger.info(`Created ${this.world.creatures.length} fish successfully`);
   }
 
   private timestep(): void {
-    this.ctx.globalAlpha = 0.2 + 0.6 * this.alpha;
-    this.ctx.fillStyle = "#ffffff";
+    logger.debug('Timestep called, drawing frame with', this.world.creatures.length, 'fish');
+
+    this.ctx.globalAlpha = SIMULATION.MIN_ALPHA + SIMULATION.MAX_ALPHA_RANGE * this.alpha;
+    this.ctx.fillStyle = SIMULATION.BACKGROUND_COLOR;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = this.alpha;
 
-    for (const fish of this.world.creatures) {
-      if (Simulation.follow) {
-        fish.follow(Simulation.mouse, 150);
+    // Ensure Fish.showBehavior is in sync with this instance's showBehavior
+    Fish.showBehavior = this.showBehavior;
+
+    // Update spatial grid with current fish positions
+    this.spatialGrid.updateGrid(this.world.creatures);
+
+    // Draw the spatial grid when showBehavior is enabled
+    if (this.showBehavior) {
+      // Find the fish closest to the mouse cursor instead of selecting a random one
+      if (this.world.creatures.length > 0) {
+        let closestFish = this.world.creatures[0];
+        let minDistance = this.mouse.dist(closestFish.location);
+
+        // Find the fish closest to the mouse cursor
+        for (const fish of this.world.creatures) {
+          const distance = this.mouse.dist(fish.location);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestFish = fish;
+          }
+        }
+
+        // Store the index of the closest fish
+        this.highlightedFishIndex = this.world.creatures.indexOf(closestFish);
       }
 
-      const neighbors = fish.look(
-        this.world.creatures,
-        100 * fish.mass,
-        Math.PI * 2
+      if (this.highlightedFishIndex !== undefined && this.world.creatures.length > 0) {
+        const highlightedFish = this.world.creatures[this.highlightedFishIndex];
+        this.spatialGrid.drawGrid(
+          this.ctx,
+          this.world.width,
+          this.world.height,
+          highlightedFish.lookRange,
+          highlightedFish.location
+        );
+
+        // Save canvas state
+        this.ctx.save();
+
+        // Draw a line from the mouse to the highlighted fish
+        this.ctx.strokeStyle = 'rgba(70, 130, 180, 0.6)'; // Steel blue, semi-transparent
+        this.ctx.setLineDash([8, 4]); // Dashed line
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.mouse.x, this.mouse.y);
+        this.ctx.lineTo(highlightedFish.location.x, highlightedFish.location.y);
+        this.ctx.stroke();
+
+        // Draw a small circle at the mouse position
+        this.ctx.fillStyle = 'rgba(70, 130, 180, 0.6)';
+        this.ctx.beginPath();
+        this.ctx.arc(this.mouse.x, this.mouse.y, 6, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.restore();
+      } else {
+        this.spatialGrid.drawGrid(this.ctx, this.world.width, this.world.height);
+      }
+    }
+
+    for (const fish of this.world.creatures) {
+      if (this.follow) {
+        fish.follow(this.mouse, FISH.FOLLOW_RADIUS);
+      }
+
+      // Use spatial partitioning for more efficient neighbor lookup
+      const nearbyFish = this.spatialGrid.query(fish.location, fish.lookRange);
+      const neighbors = fish.filterVisibleNeighbors(nearbyFish, MATH.FULL_CIRCLE);
+
+      const { bigger, similar, smaller } = categorizeFishByMass(
+        fish,
+        neighbors,
+        FISH.MASS_THRESHOLD_BIGGER,
+        FISH.MASS_THRESHOLD_SMALLER
       );
 
-      const friends: Fish[] = [];
-      for (const neighbor of neighbors) {
-        if (neighbor.mass < fish.mass * 2 && neighbor.mass > fish.mass / 2) {
-          friends.push(neighbor);
-        }
-      }
-
-      if (friends.length) {
-        fish.shoal(friends);
+      if (similar.length) {
+        fish.shoal(similar);
       } else {
         fish.wander();
       }
 
       fish.boundaries(this.world);
 
-      const bigger: Fish[] = [];
-      for (const neighbor of neighbors) {
-        if (neighbor.mass > fish.mass * 2) {
-          bigger.push(neighbor);
-        }
-      }
-
       if (bigger.length) {
-        fish.avoid(bigger, 300);
-      }
-
-      const smaller: Fish[] = [];
-      for (const neighbor of neighbors) {
-        if (neighbor.mass < fish.mass / 2) {
-          smaller.push(neighbor);
-        }
+        fish.avoid(bigger, FISH.AVOID_RANGE);
       }
 
       if (smaller.length) {
@@ -316,64 +401,159 @@ export class Simulation {
       fish.update();
       fish.draw(this.ctx);
     }
+
+    // If showBehavior is enabled, display additional information about the spatial grid
+    if (this.showBehavior) {
+      this.drawGridInfo();
+    }
+  }
+
+  /**
+   * Draw additional information about the spatial grid
+   */
+  private drawGridInfo(): void {
+    const cellSize = this.spatialGrid.getCellSize();
+    const stats = this.spatialGrid.getGridStats();
+
+    // Set up font and measure text to determine background size
+    this.ctx.font = '12px Arial';
+    this.ctx.save();
+
+    // Position the info at the top-left corner with a small margin
+    const margin = 10;
+    const x = margin;
+    const lineHeight = 18;
+    const y = margin + lineHeight;
+
+    // Create text lines for the info panel, adapting to screen width
+    const isNarrowScreen = this.canvas.width < 500;
+    const isMobileScreen = this.canvas.width < 380;
+
+    const lines = [];
+    lines.push(`Spatial Grid: Cell Size = ${cellSize}px`);
+
+    if (isNarrowScreen) {
+      lines.push(`Blue lines = grid boundaries`);
+      lines.push(`Blue cells = occupied with fish`);
+    } else {
+      lines.push(`Grid Visualization: Blue lines = grid boundaries, Blue cells = occupied`);
+    }
+
+    lines.push(`Occupied Cells: ${stats.occupiedCells}, Total Fish: ${stats.fishCount}`);
+    lines.push(`Maximum Fish in a Single Cell: ${stats.maxFishInCell}`);
+
+    // Add highlighted fish info as potentially multiple lines for narrow screens
+    if (this.highlightedFishIndex !== undefined && this.world.creatures.length > 0) {
+      const highlightedFish = this.world.creatures[this.highlightedFishIndex];
+      const distanceToMouse = Math.round(this.mouse.dist(highlightedFish.location));
+
+      if (isMobileScreen) {
+        lines.push(`Highlighted Fish:`);
+        lines.push(`  Mass = ${highlightedFish.mass.toFixed(2)}`);
+        lines.push(`  Look Range = ${Math.round(highlightedFish.lookRange)}px`);
+        lines.push(`  Distance from Mouse = ${distanceToMouse}px`);
+      } else if (isNarrowScreen) {
+        lines.push(`Highlighted Fish: Mass = ${highlightedFish.mass.toFixed(2)}`);
+        lines.push(
+          `Look Range = ${Math.round(highlightedFish.lookRange)}px, Distance = ${distanceToMouse}px`
+        );
+      } else {
+        lines.push(
+          `Highlighted Fish: Mass = ${highlightedFish.mass.toFixed(2)}, Look Range = ${Math.round(highlightedFish.lookRange)}px, Distance = ${distanceToMouse}px`
+        );
+      }
+    }
+
+    // Measure the maximum text width to determine background width
+    let maxWidth = 0;
+    for (const line of lines) {
+      const width = this.ctx.measureText(line).width;
+      maxWidth = Math.max(maxWidth, width);
+    }
+
+    // Draw the background rectangle with appropriate size
+    const paddingX = 20;
+    const paddingY = 10;
+    const rectWidth = maxWidth + paddingX * 2;
+    const rectHeight = lines.length * lineHeight + paddingY * 2;
+
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    this.ctx.fillRect(x - paddingX, y - lineHeight - paddingY, rectWidth, rectHeight);
+
+    // Draw the text
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    for (let i = 0; i < lines.length; i++) {
+      this.ctx.fillText(lines[i], x, y + i * lineHeight);
+    }
+
+    this.ctx.restore();
   }
 
   private slow(): void {
+    logger.debug(`Slowing animation, current interval: ${this.interval}`);
     if (this.timeline) {
       clearInterval(this.timeline);
       this.timeline = null;
+      logger.debug('Cleared existing animation timeline');
     }
 
-    if (this.interval < 45) {
-      this.alpha -= 0.032;
+    if (this.interval < SIMULATION.SLOW_INTERVAL) {
+      this.alpha -= SIMULATION.ALPHA_STEP;
       this.timestep();
       setTimeout(() => this.slow(), this.interval++);
+      logger.debug(`Transitioning to slower speed, new interval: ${this.interval}`);
     } else {
       this.timeline = window.setInterval(() => this.timestep(), this.interval);
+      logger.debug(`Reached target slow interval: ${this.interval}`);
     }
   }
 
   private fast(): void {
+    logger.debug(`Speeding up animation, current interval: ${this.interval}`);
     if (this.timeline) {
       clearInterval(this.timeline);
       this.timeline = null;
+      logger.debug('Cleared existing animation timeline');
     }
 
-    if (this.interval > 20) {
-      this.alpha += 0.032;
+    if (this.interval > SIMULATION.NORMAL_INTERVAL) {
+      this.alpha += SIMULATION.ALPHA_STEP;
       this.timestep();
       setTimeout(() => this.fast(), this.interval--);
+      logger.debug(`Transitioning to faster speed, new interval: ${this.interval}`);
     } else {
-      this.alpha = 1;
+      this.alpha = SIMULATION.DEFAULT_ALPHA;
       this.timeline = window.setInterval(() => this.timestep(), this.interval);
+      logger.debug(`Reached target fast interval: ${this.interval}`);
     }
   }
 
   public start(): void {
-    console.log(
-      "Starting simulation with",
-      this.world.creatures.length,
-      "fish"
-    );
-    console.log(
-      "Canvas dimensions:",
-      this.canvas.width,
-      "x",
-      this.canvas.height
-    );
-    console.log("Initial follow state:", Simulation.follow);
+    logger.info('Starting simulation with', this.world.creatures.length, 'fish');
+    logger.info('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
+    logger.info('Initial follow state:', this.follow);
 
+    // Make sure we draw at least one frame immediately
+    this.timestep();
+
+    // Then start the animation loop
     this.fast();
+    logger.info('Animation loop started with interval:', this.interval);
 
     setTimeout(() => {
       window.scrollTo(0, 1);
-    }, 1000);
+      logger.debug('Window scrolled to minimize browser chrome');
+    }, SIMULATION.SCROLL_TIMEOUT);
   }
 
   public stop(): void {
+    logger.info('Stopping simulation animation loop');
     if (this.timeline) {
       clearInterval(this.timeline);
       this.timeline = null;
+      logger.info('Animation timeline cleared');
+    } else {
+      logger.info('No active timeline to clear');
     }
   }
 }
