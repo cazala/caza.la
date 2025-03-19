@@ -22,6 +22,18 @@ export class Simulation {
   // Static reference to the current simulation instance for event handlers
   private static currentInstance: Simulation | null = null;
 
+  // === Touch Event Handling ===
+  // On mobile devices, browsers generate both touch events and synthetic mouse events.
+  // This causes issues with behavior toggling as it can happen twice (once for touch, once for mouse).
+  // The following variables help prevent duplicate handling of the same user interaction.
+
+  // Flag to detect if user is on a touch-capable device
+  private static isTouchDevice: boolean = false;
+  // Timestamp of the last touch event to create a window during which mouse events are ignored
+  private static lastTouchTime: number = 0;
+  // Time window (in ms) after a touch event during which mouse events should be ignored
+  private static readonly TOUCH_MOUSE_PREVENTION_TIMEOUT = 500;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const context = canvas.getContext("2d");
@@ -58,10 +70,28 @@ export class Simulation {
     console.log("Setting up event listeners");
 
     window.addEventListener("mousemove", (e) => {
+      // Skip updating mouse position if this is a touch device and touch was recent
+      // This prevents duplicate processing when mobile browsers trigger synthetic mouse events after touch
+      if (
+        Simulation.isTouchDevice &&
+        Date.now() - Simulation.lastTouchTime <
+          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      ) {
+        return;
+      }
       Simulation.mouse.set(e.clientX, e.clientY);
     });
 
     window.addEventListener("mousedown", () => {
+      // Skip mousedown if this is a touch device and touch was recent
+      // This prevents double-triggering behaviors on mobile devices
+      if (
+        Simulation.isTouchDevice &&
+        Date.now() - Simulation.lastTouchTime <
+          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      ) {
+        return;
+      }
       Simulation.follow = true;
       Simulation.mouseDownTime = Date.now();
       console.log(
@@ -95,6 +125,17 @@ export class Simulation {
     });
 
     const handleMouseUp = () => {
+      // Skip mouseup if this is a touch device and touch was recent
+      // This prevents the fish behavior from being toggled twice on mobile
+      // (once by touchend and again by the simulated mouseup)
+      if (
+        Simulation.isTouchDevice &&
+        Date.now() - Simulation.lastTouchTime <
+          Simulation.TOUCH_MOUSE_PREVENTION_TIMEOUT
+      ) {
+        return;
+      }
+
       Simulation.follow = false;
       const currentTime = Date.now();
 
@@ -114,9 +155,17 @@ export class Simulation {
 
     window.addEventListener("mouseup", handleMouseUp);
 
+    // === TOUCH EVENT HANDLERS ===
+    // Touch events happen first on mobile, followed by synthetic mouse events.
+    // We handle the touch events properly and then ignore the subsequent mouse events.
+
     document.body.addEventListener(
       "touchstart",
       (e) => {
+        // Mark that this is a touch device - this helps ignore subsequent mouse events
+        Simulation.isTouchDevice = true;
+        Simulation.lastTouchTime = Date.now();
+
         Simulation.follow = true;
         Simulation.mouseDownTime = Date.now();
         const touchobj = e.changedTouches[0];
@@ -128,6 +177,8 @@ export class Simulation {
     document.body.addEventListener(
       "touchmove",
       (e) => {
+        // Update touch timestamp to continue ignoring synthetic mouse events
+        Simulation.lastTouchTime = Date.now();
         const touchobj = e.changedTouches[0];
         Simulation.mouse.set(touchobj.clientX, touchobj.clientY);
         e.preventDefault();
@@ -138,6 +189,8 @@ export class Simulation {
     document.body.addEventListener(
       "touchend",
       (e) => {
+        // Update touch timestamp to ignore upcoming synthetic mouse events
+        Simulation.lastTouchTime = Date.now();
         Simulation.follow = false;
         const currentTime = Date.now();
 
