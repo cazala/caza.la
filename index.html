@@ -1,44 +1,15 @@
-<html>
-<head>
-	<title>Juan Cazala</title>
-	<link rel="shortcut icon" type="image/ico" href="favicon.ico" />
-	<meta name="description" content="Hello world, my name is Juan Cazala.">
-	<meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, user-scalable=no, maximum-scale=1, minimum-scale=1" />
-	<link href="https://fonts.googleapis.com/css?family=Inconsolata:400,700" rel="stylesheet" type="text/css">
-	<link href="style.css" rel="stylesheet" type="text/css">
-</head>
-	<body>
-		<div class="text">
-			<p>
-				<b class="hello">Hello World.</b>
-				<br>
-				<br> My name is Juan Cazala.
-				<br>
-				<br>I'm a Software Engineer from Argentina, currently working at <a href="https://decentraland.org">Decentraland</a>.<br><br>I like making awesome stuff, if you'd like to reach me follow these links:
-			</p>
-			<ul>
-        <li><a href="http://caza.la/log" target="_self">log</a></li>
-				<li><a href="http://github.com/cazala" target="blank">gh</a></li>
-				<li><a href="http://twitter.com/juancazala" target="blank">tw</a></li>
-				<li><a href="http://linkedin.com/in/juancazala/en" target="blank">in</a></li>
-				<li><a href="mailto:cazala@mail.sfsu.edu">@</a></li>
-			</ul>
-			<p class="play">...or you can just <a href="#" onclick="$('.text').fadeOut();">play with the fish</a>.</p>
-		</div>
-		<canvas id="canvas"></canvas>
-		<script src="jquery.js"></script>
-		<script src="raphael.js"></script>
-		<script src="vector.js"></script>
-		<script src="fish.js"></script>
-		<script src="main.js"></script>
-	  <script>
-	  (function(i,s,o,g,r,a,m){i["GoogleAnalyticsObject"]=r;i[r]=i[r]||function(){
-	  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-	  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-	})(window,document,"script","//www.google-analytics.com/analytics.js","ga");
-
-	  ga('create', 'UA-54879338-1', 'auto');
-	  ga('send', 'pageview');
-	  </script>
-	</body>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/ico" href="/favicon.jpeg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Hello world, my name is Juan Cazala." />
+    <link href="https://fonts.googleapis.com/css?family=Inconsolata:400,700" rel="stylesheet" type="text/css">
+    <title>Juan Cazala</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
