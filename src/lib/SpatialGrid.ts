@@ -3,17 +3,30 @@ import { Vector } from './Vector';
 import { logger } from './logging';
 
 /**
- * A spatial partitioning grid to optimize collision detection and neighbor searches
+ * A spatial partitioning grid system that optimizes collision detection and neighbor searches.
+ *
+ * This class implements a grid-based spatial partitioning system that divides the world space
+ * into cells of equal size. Each cell contains a list of fish that are currently located within
+ * that cell's boundaries. This allows for efficient queries of nearby objects without having to
+ * check against every object in the world.
+ *
+ * The grid uses a hash map with string keys of format "x,y" to store cells, making lookups efficient.
+ * When querying for objects within a radius, only the cells that overlap with the query circle
+ * are checked, significantly reducing the number of distance calculations needed.
  */
 export class SpatialGrid {
+  /** Map of cell coordinates to lists of fish in each cell */
   private cells: Map<string, Fish[]> = new Map();
+
+  /** The size of each cell in the grid (in pixels) */
   private cellSize: number;
 
   /**
-   * Create a new spatial grid
-   * @param width The total width of the space
-   * @param height The total height of the space
-   * @param cellSize The size of each cell in the grid
+   * Creates a new spatial grid for efficient spatial queries.
+   *
+   * @param width - The total width of the space to partition
+   * @param height - The total height of the space to partition
+   * @param cellSize - The size of each cell in the grid (smaller cells = more precision but higher memory usage)
    */
   constructor(width: number, height: number, cellSize: number) {
     this.cellSize = cellSize;
@@ -21,10 +34,12 @@ export class SpatialGrid {
   }
 
   /**
-   * Get the cell key for a position
-   * @param x X coordinate
-   * @param y Y coordinate
-   * @returns String key for the cell
+   * Converts a world position to a cell key string.
+   *
+   * @param x - X coordinate in world space
+   * @param y - Y coordinate in world space
+   * @returns A string key in the format "gridX,gridY" that uniquely identifies a cell
+   * @private
    */
   private getCellKey(x: number, y: number): string {
     const gridX = Math.floor(x / this.cellSize);
@@ -33,16 +48,19 @@ export class SpatialGrid {
   }
 
   /**
-   * Clear all cells in the grid
+   * Clears all cells in the grid, removing all tracked objects.
+   * This is typically called before updating the grid with new object positions.
    */
   public clear(): void {
     this.cells.clear();
   }
 
   /**
-   * Resize the grid
-   * @param width New width
-   * @param height New height
+   * Resizes the grid to accommodate a new world size.
+   * Since this implementation uses dynamic cell allocation, it only needs to clear the grid.
+   *
+   * @param width - New width of the world
+   * @param height - New height of the world
    */
   public resize(width: number, height: number): void {
     // Since we're using a dynamic cell-based system, we just need to clear the grid
@@ -52,8 +70,9 @@ export class SpatialGrid {
   }
 
   /**
-   * Insert a fish into the appropriate cell in the grid
-   * @param fish The fish to insert
+   * Inserts a fish into the appropriate cell in the grid based on its current location.
+   *
+   * @param fish - The fish to insert into the grid
    */
   public insert(fish: Fish): void {
     const key = this.getCellKey(fish.location.x, fish.location.y);
@@ -66,8 +85,10 @@ export class SpatialGrid {
   }
 
   /**
-   * Update the grid with all fish
-   * @param fishes Array of all fish
+   * Updates the entire grid with the current positions of all fish.
+   * Clears the grid and re-inserts all fish.
+   *
+   * @param fishes - Array of all fish to track in the grid
    */
   public updateGrid(fishes: Fish[]): void {
     this.clear();
@@ -77,10 +98,13 @@ export class SpatialGrid {
   }
 
   /**
-   * Get all fish within a radius of a position
-   * @param position Center position
-   * @param radius Search radius
-   * @returns Array of fish within the radius
+   * Queries the grid for all fish within a specified radius of a position.
+   * This is the core optimization method that only checks fish in grid cells that
+   * intersect with the query circle.
+   *
+   * @param position - Center position of the query circle
+   * @param radius - Radius of the query circle
+   * @returns Array of fish that are within the specified radius
    */
   public query(position: Vector, radius: number): Fish[] {
     const neighbors: Fish[] = [];
@@ -112,12 +136,14 @@ export class SpatialGrid {
   }
 
   /**
-   * Draw the spatial grid for visualization purposes
-   * @param ctx The canvas rendering context
-   * @param worldWidth Total width of the world
-   * @param worldHeight Total height of the world
-   * @param highlightRadius Optional radius to highlight (e.g., to show active query area)
-   * @param highlightPosition Optional position to center the highlight
+   * Visualizes the spatial grid for debugging purposes.
+   * Draws the grid lines, occupied cells, and optionally highlights a query area.
+   *
+   * @param ctx - The canvas rendering context to draw on
+   * @param worldWidth - Total width of the world
+   * @param worldHeight - Total height of the world
+   * @param highlightRadius - Optional radius to highlight (e.g., to show active query area)
+   * @param highlightPosition - Optional position to center the highlight
    */
   public drawGrid(
     ctx: CanvasRenderingContext2D,
@@ -206,22 +232,31 @@ export class SpatialGrid {
   }
 
   /**
-   * Get the cell size used by this grid
+   * Gets the cell size used by this grid.
+   *
+   * @returns The size of each cell in pixels
    */
   public getCellSize(): number {
     return this.cellSize;
   }
 
   /**
-   * Get the total number of currently occupied cells
+   * Gets the total number of currently occupied cells in the grid.
+   *
+   * @returns The number of cells containing at least one fish
    */
   public getOccupiedCellCount(): number {
     return this.cells.size;
   }
 
   /**
-   * Get stats about the cells in the grid
-   * @returns Object with statistics about the grid
+   * Gets statistics about the current state of the grid.
+   *
+   * @returns An object containing stats about the grid:
+   *   - totalCells: total number of occupied cells
+   *   - occupiedCells: alias for totalCells (for backward compatibility)
+   *   - fishCount: total number of fish in the grid
+   *   - maxFishInCell: maximum number of fish in any single cell
    */
   public getGridStats(): {
     totalCells: number;

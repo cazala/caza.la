@@ -10,10 +10,23 @@ import {
 import { categorizeFishByMass } from './behavior-utils';
 import { SpatialGrid } from './SpatialGrid';
 
+/**
+ * Configuration options for initializing a Simulation.
+ */
 export interface SimulationOptions {
+  /**
+   * The HTML canvas element where the simulation will be rendered.
+   */
   canvasElement: HTMLCanvasElement;
-  // Additional configuration options
+  /**
+   * Optional. The number of fish to create in the simulation.
+   * If not provided, the number will be calculated based on screen size.
+   */
   numFish?: number;
+  /**
+   * Optional. The initial animation interval in milliseconds.
+   * Controls the simulation speed.
+   */
   initialInterval?: number;
 }
 
@@ -57,6 +70,12 @@ export class Simulation {
   // Track highlighted fish index
   private highlightedFishIndex: number | undefined;
 
+  /**
+   * Creates a new fish simulation instance.
+   *
+   * @param options - Configuration options for the simulation
+   * @throws Error if canvas context cannot be obtained
+   */
   constructor(options: SimulationOptions) {
     this.canvas = options.canvasElement;
     const context = this.canvas.getContext('2d');
@@ -102,7 +121,15 @@ export class Simulation {
     this.start();
   }
 
-  // Instance methods for event handling
+  /**
+   * Handles mouse movement events.
+   *
+   * Updates the internal mouse position vector based on the current mouse coordinates.
+   * Implements touch prevention logic to avoid conflicts between touch and mouse events.
+   *
+   * @param e - The mouse move event containing position information
+   * @private
+   */
   private handleMouseMove(e: MouseEvent): void {
     if (
       shouldIgnoreMouseAfterTouch(
@@ -116,6 +143,14 @@ export class Simulation {
     updatePositionFromEvent(e, this.mouse);
   }
 
+  /**
+   * Handles mouse button down events.
+   *
+   * Activates fish following behavior and records the time of the mouse press.
+   * Implements touch prevention logic to avoid conflicts between touch and mouse events.
+   *
+   * @private
+   */
   private handleMouseDown(): void {
     if (
       shouldIgnoreMouseAfterTouch(
@@ -131,10 +166,27 @@ export class Simulation {
     logger.info('Mouse down event triggered, follow set to:', this.follow);
   }
 
+  /**
+   * Handles keyboard key down events.
+   *
+   * Currently only logs the key press - may be expanded for keyboard controls.
+   *
+   * @param e - The keyboard event containing key information
+   * @private
+   */
   private handleKeyDown(e: KeyboardEvent): void {
     logger.info('Key down event triggered:', e.key);
   }
 
+  /**
+   * Handles keyboard key up events.
+   *
+   * Processes specific key releases to trigger simulation actions:
+   * - Space key: Toggles slow motion mode by switching between fast and slow intervals
+   *
+   * @param e - The keyboard event containing key information
+   * @private
+   */
   private handleKeyUp(e: KeyboardEvent): void {
     logger.info('Key up event triggered:', e.key);
 
@@ -149,6 +201,16 @@ export class Simulation {
     }
   }
 
+  /**
+   * Handles mouse button up events.
+   *
+   * Deactivates fish following behavior and processes quick interactions:
+   * - Quick clicks toggle behavior visualization
+   *
+   * Implements touch prevention logic to avoid conflicts between touch and mouse events.
+   *
+   * @private
+   */
   private handleMouseUp(): void {
     if (
       shouldIgnoreMouseAfterTouch(
@@ -174,6 +236,18 @@ export class Simulation {
     this.mouseDownTime = null;
   }
 
+  /**
+   * Handles touch start events.
+   *
+   * This method:
+   * 1. Marks the device as a touch device to help handle synthetic mouse events
+   * 2. Records the current time for touch-mouse conflict prevention
+   * 3. Activates fish following behavior
+   * 4. Updates the mouse position to the touch location
+   *
+   * @param e - The touch event containing touch information
+   * @private
+   */
   private handleTouchStart(e: TouchEvent): void {
     // Mark that this is a touch device - this helps ignore subsequent mouse events
     this.isTouchDevice = true;
@@ -184,6 +258,15 @@ export class Simulation {
     updatePositionFromEvent(e.changedTouches[0], this.mouse);
   }
 
+  /**
+   * Handles touch move events.
+   *
+   * Updates the internal mouse position to match the touch position
+   * and refreshes the touch timestamp to prevent synthetic mouse events.
+   *
+   * @param e - The touch event containing touch information
+   * @private
+   */
   private handleTouchMove(e: TouchEvent): void {
     // Update touch timestamp to continue ignoring synthetic mouse events
     this.lastTouchTime = Date.now();
@@ -191,6 +274,18 @@ export class Simulation {
     e.preventDefault();
   }
 
+  /**
+   * Handles touch end events.
+   *
+   * This method:
+   * 1. Updates touch timestamp to prevent synthetic mouse events
+   * 2. Deactivates fish following behavior
+   * 3. Processes quick taps to toggle behavior visualization
+   * 4. Handles multi-touch gestures (2+ fingers) to toggle behavior visualization
+   *
+   * @param e - The touch event containing touch information
+   * @private
+   */
   private handleTouchEnd(e: TouchEvent): void {
     // Update touch timestamp to ignore upcoming synthetic mouse events
     this.lastTouchTime = Date.now();
@@ -212,6 +307,19 @@ export class Simulation {
     }
   }
 
+  /**
+   * Sets up all event listeners needed by the simulation.
+   *
+   * This method attaches event handlers for:
+   * - Mouse movement, clicks, and up/down events
+   * - Touch events for mobile devices
+   * - Keyboard events for controls
+   * - Window resize events
+   *
+   * All handlers are properly bound to this instance to maintain correct context.
+   *
+   * @private
+   */
   private setupEventListeners(): void {
     logger.info('Setting up event listeners for simulation instance');
 
@@ -228,6 +336,16 @@ export class Simulation {
     logger.info('All event listeners attached successfully');
   }
 
+  /**
+   * Cleans up resources used by the simulation.
+   *
+   * This method performs a complete cleanup by:
+   * 1. Stopping the animation loop
+   * 2. Removing all event listeners that were added during initialization
+   *
+   * This should be called when the simulation is no longer needed or
+   * before the component containing it is unmounted to prevent memory leaks.
+   */
   public cleanup(): void {
     logger.info('Starting simulation cleanup process');
 
@@ -250,6 +368,18 @@ export class Simulation {
     logger.info('Simulation cleanup completed');
   }
 
+  /**
+   * Handles window resize events by adjusting the simulation dimensions.
+   *
+   * This method:
+   * 1. Updates the world width and height based on the canvas dimensions
+   * 2. Resizes the spatial partitioning grid
+   * 3. Ensures all fish remain within the new boundaries
+   *
+   * It's called automatically when the window is resized.
+   *
+   * @private
+   */
   private resize(): void {
     logger.info('Resizing simulation');
 
@@ -274,6 +404,21 @@ export class Simulation {
     }
   }
 
+  /**
+   * Initializes the fish population for the simulation.
+   *
+   * This method:
+   * 1. Clears any existing fish from the world
+   * 2. Calculates an appropriate number of fish based on screen size (if not specified)
+   * 3. Creates fish with random positions, masses, and initial velocities
+   *
+   * Each fish is assigned properties that affect its appearance and behavior
+   * based on its randomly generated mass.
+   *
+   * @param numFish - Optional number of fish to create. If not provided,
+   *                 the number is calculated based on screen width.
+   * @private
+   */
   private initFish(numFish?: number): void {
     // Clear any existing fish
     this.world.creatures = [];
@@ -298,6 +443,22 @@ export class Simulation {
     logger.info(`Created ${this.world.creatures.length} fish successfully`);
   }
 
+  /**
+   * Performs a single simulation step, updating and rendering all fish.
+   *
+   * This is the core simulation method that:
+   * 1. Clears the canvas
+   * 2. Updates the spatial partitioning grid with current fish positions
+   * 3. Draws the spatial grid visualization if enabled
+   * 4. Finds and highlights the fish closest to the mouse cursor
+   * 5. Updates each fish's behavior based on nearby fish (using spatial queries)
+   * 6. Applies forces, updates positions, and renders each fish
+   * 7. Draws the information panel if behavior visualization is enabled
+   *
+   * This method is called repeatedly by the animation loop to create the simulation.
+   *
+   * @private
+   */
   private timestep(): void {
     logger.debug('Timestep called, drawing frame with', this.world.creatures.length, 'fish');
 
@@ -409,7 +570,22 @@ export class Simulation {
   }
 
   /**
-   * Draw additional information about the spatial grid
+   * Draws additional information about the spatial grid as an overlay panel.
+   *
+   * This method renders a semi-transparent information panel in the top-left corner
+   * of the canvas that displays statistics and details about the spatial partitioning
+   * grid and the currently highlighted fish. The panel includes:
+   *
+   * - Cell size of the spatial grid
+   * - Explanation of visualization elements (grid lines and cell colors)
+   * - Number of occupied cells and total fish count
+   * - Maximum fish count in any single cell
+   * - Details about the highlighted fish (if any)
+   *
+   * The panel automatically adapts its layout and content based on the screen size,
+   * with different displays for desktop, narrow, and mobile screens.
+   *
+   * @private
    */
   private drawGridInfo(): void {
     const cellSize = this.spatialGrid.getCellSize();
@@ -489,6 +665,17 @@ export class Simulation {
     this.ctx.restore();
   }
 
+  /**
+   * Transitions the simulation to slow motion.
+   *
+   * This method gradually decreases the animation speed by incrementing the interval
+   * between frames and adjusting the alpha (opacity) for trail effects. It uses a
+   * recursive approach to create a smooth transition from normal to slow motion.
+   *
+   * Once the target slow interval is reached, it sets up a regular interval for the animation.
+   *
+   * @private
+   */
   private slow(): void {
     logger.debug(`Slowing animation, current interval: ${this.interval}`);
     if (this.timeline) {
@@ -508,6 +695,18 @@ export class Simulation {
     }
   }
 
+  /**
+   * Transitions the simulation back to normal speed.
+   *
+   * This method gradually increases the animation speed by decrementing the interval
+   * between frames and adjusting the alpha (opacity) to reduce trail effects.
+   * It uses a recursive approach to create a smooth transition from slow motion to normal speed.
+   *
+   * Once the target normal interval is reached, it resets the alpha to the default value
+   * and sets up a regular interval for the animation.
+   *
+   * @private
+   */
   private fast(): void {
     logger.debug(`Speeding up animation, current interval: ${this.interval}`);
     if (this.timeline) {
@@ -528,6 +727,16 @@ export class Simulation {
     }
   }
 
+  /**
+   * Starts the simulation animation loop.
+   *
+   * This method initializes the simulation by:
+   * 1. Drawing the first frame immediately to ensure fish are visible
+   * 2. Starting the animation loop at normal speed
+   * 3. Scrolling the window to minimize browser chrome (after a short delay)
+   *
+   * It should be called once after the simulation is constructed.
+   */
   public start(): void {
     logger.info('Starting simulation with', this.world.creatures.length, 'fish');
     logger.info('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
@@ -546,6 +755,12 @@ export class Simulation {
     }, SIMULATION.SCROLL_TIMEOUT);
   }
 
+  /**
+   * Stops the simulation animation loop.
+   *
+   * This method halts the animation by clearing the animation interval.
+   * It can be called to pause the simulation or before cleanup.
+   */
   public stop(): void {
     logger.info('Stopping simulation animation loop');
     if (this.timeline) {
