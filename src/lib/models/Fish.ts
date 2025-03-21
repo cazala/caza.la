@@ -1,6 +1,6 @@
 import { Vector } from './Vector';
-import { FISH, MATH, SIMULATION } from './constants';
-import { drawFishConnections, drawFishShape } from './drawing-utils';
+import { FISH, MATH, SIMULATION } from '../utils/constants';
+import { drawFishConnections, drawFishShape } from '../utils/drawing';
 
 export interface World {
   width: number;

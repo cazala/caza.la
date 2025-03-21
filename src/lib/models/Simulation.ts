@@ -1,13 +1,13 @@
 import { Fish, World } from './Fish';
 import { Vector } from './Vector';
-import { logger } from './logging';
-import { FISH, SIMULATION, MATH } from './constants';
+import { logger } from '../utils/logging';
+import { FISH, SIMULATION, MATH } from '../utils/constants';
 import {
   updatePositionFromEvent,
   isQuickInteraction,
   shouldIgnoreMouseAfterTouch,
-} from './event-utils';
-import { categorizeFishByMass } from './behavior-utils';
+} from '../utils/events';
+import { categorizeFishByMass } from '../utils/behavior';
 import { SpatialGrid } from './SpatialGrid';
 
 /**

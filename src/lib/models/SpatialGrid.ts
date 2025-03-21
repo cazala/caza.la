@@ -1,6 +1,6 @@
 import { Fish } from './Fish';
 import { Vector } from './Vector';
-import { logger } from './logging';
+import { logger } from '../utils/logging';
 
 /**
  * A spatial partitioning grid system that optimizes collision detection and neighbor searches.

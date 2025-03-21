@@ -1,4 +1,4 @@
-import { logger } from './logging';
+import { logger } from '../utils/logging';
 
 /**
  * A 2D vector implementation with common operations.

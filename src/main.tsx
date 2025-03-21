@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom/client';
 // Removing index.css import to prevent style conflicts
 import App from './App.tsx';
 import './index.css';
-import { logger } from './lib/logging';
-import { config } from './lib/config';
+import { logger } from './lib/utils/logging.ts';
+import { config } from './lib/utils/config.ts';
 
 // Add info log for app initialization
 logger.info(`App initializing in ${config.getEnvironment()} environment`);
