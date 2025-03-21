@@ -33,6 +33,9 @@ export interface SimulationOptions {
 export class Simulation {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  // Add offscreen canvas for double buffering
+  private offscreenCanvas: OffscreenCanvas | HTMLCanvasElement;
+  private offscreenCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   private mouse: Vector = new Vector(0, 0);
   private world: World = {
     width: 0,
@@ -66,9 +69,31 @@ export class Simulation {
   private boundTouchMoveHandler: (e: TouchEvent) => void;
   private boundTouchEndHandler: (e: TouchEvent) => void;
   private boundResizeHandler: () => void;
+  private boundDisplayChangeHandler: () => void;
 
   // Track highlighted fish index
   private highlightedFishIndex: number | undefined;
+
+  // Add FPS tracking
+  private lastFrameTime: number = 0;
+  private frameCount: number = 0;
+  private fps: number = 0;
+  private fpsUpdateInterval: number = 500; // ms
+  private lastFpsUpdate: number = 0;
+  private animationFrameId: number | null = null;
+  private showFps: boolean = false; // For debugging
+
+  // Add adaptive quality settings
+  private adaptiveQuality: boolean = true;
+  private qualityLevels = {
+    high: { fishMax: SIMULATION.MAX_FISH, detailLevel: 3 },
+    medium: { fishMax: 60, detailLevel: 2 },
+    low: { fishMax: 30, detailLevel: 1 },
+  };
+  private currentQuality: 'high' | 'medium' | 'low' = 'high';
+  private fpsThreshold = { low: 30, medium: 45 };
+  private fpsHistory: number[] = [];
+  private fpsHistorySize = 10;
 
   /**
    * Creates a new fish simulation instance.
@@ -83,6 +108,24 @@ export class Simulation {
       throw new Error('Could not get canvas context');
     }
     this.ctx = context;
+
+    // Set up offscreen canvas for double buffering
+    try {
+      // Try to use OffscreenCanvas for better performance
+      this.offscreenCanvas = new OffscreenCanvas(this.canvas.width, this.canvas.height);
+    } catch (e) {
+      // Fall back to regular canvas if OffscreenCanvas is not supported
+      this.offscreenCanvas = document.createElement('canvas');
+      this.offscreenCanvas.width = this.canvas.width;
+      this.offscreenCanvas.height = this.canvas.height;
+    }
+
+    const offContext = this.offscreenCanvas.getContext('2d');
+    if (!offContext) {
+      throw new Error('Could not get offscreen canvas context');
+    }
+    this.offscreenCtx = offContext as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
     this.interval = options.initialInterval || SIMULATION.NORMAL_INTERVAL;
 
     logger.info(`Canvas size: ${this.canvas.width}x${this.canvas.height}`);
@@ -109,6 +152,7 @@ export class Simulation {
     this.boundTouchMoveHandler = this.handleTouchMove.bind(this);
     this.boundTouchEndHandler = this.handleTouchEnd.bind(this);
     this.boundResizeHandler = this.resize.bind(this);
+    this.boundDisplayChangeHandler = this.handleDisplayChange.bind(this);
 
     this.setupEventListeners();
     this.resize();
@@ -140,7 +184,7 @@ export class Simulation {
     ) {
       return;
     }
-    updatePositionFromEvent(e, this.mouse);
+    updatePositionFromEvent(e, this.mouse, this.canvas);
   }
 
   /**
@@ -183,6 +227,7 @@ export class Simulation {
    *
    * Processes specific key releases to trigger simulation actions:
    * - Space key: Toggles slow motion mode by switching between fast and slow intervals
+   * - F key: Toggles FPS display
    *
    * @param e - The keyboard event containing key information
    * @private
@@ -198,6 +243,9 @@ export class Simulation {
         this.slow();
       }
       this.slowmo = !this.slowmo;
+    } else if (e.key === 'f' || e.key === 'F') {
+      logger.info('F key detected, toggling FPS display');
+      this.toggleFps();
     }
   }
 
@@ -255,7 +303,7 @@ export class Simulation {
 
     this.follow = true;
     this.mouseDownTime = Date.now();
-    updatePositionFromEvent(e.changedTouches[0], this.mouse);
+    updatePositionFromEvent(e.changedTouches[0], this.mouse, this.canvas);
   }
 
   /**
@@ -270,7 +318,7 @@ export class Simulation {
   private handleTouchMove(e: TouchEvent): void {
     // Update touch timestamp to continue ignoring synthetic mouse events
     this.lastTouchTime = Date.now();
-    updatePositionFromEvent(e.changedTouches[0], this.mouse);
+    updatePositionFromEvent(e.changedTouches[0], this.mouse, this.canvas);
     e.preventDefault();
   }
 
@@ -333,6 +381,11 @@ export class Simulation {
     document.body.addEventListener('touchend', this.boundTouchEndHandler, false);
     window.addEventListener('resize', this.boundResizeHandler);
 
+    // Add listener for possible DPR changes
+    window
+      .matchMedia('(resolution: 1dppx)')
+      .addEventListener('change', this.boundDisplayChangeHandler);
+
     logger.info('All event listeners attached successfully');
   }
 
@@ -365,6 +418,15 @@ export class Simulation {
     document.body.removeEventListener('touchend', this.boundTouchEndHandler);
     window.removeEventListener('resize', this.boundResizeHandler);
 
+    // Remove display change listener
+    try {
+      window
+        .matchMedia('(resolution: 1dppx)')
+        .removeEventListener('change', this.boundDisplayChangeHandler);
+    } catch (e) {
+      logger.warn('Could not remove display change listener', e);
+    }
+
     logger.info('Simulation cleanup completed');
   }
 
@@ -375,6 +437,8 @@ export class Simulation {
    * 1. Updates the world width and height based on the canvas dimensions
    * 2. Resizes the spatial partitioning grid
    * 3. Ensures all fish remain within the new boundaries
+   * 4. Resizes the offscreen canvas to match
+   * 5. Adjusts fish count when window size changes significantly
    *
    * It's called automatically when the window is resized.
    *
@@ -383,25 +447,74 @@ export class Simulation {
   private resize(): void {
     logger.info('Resizing simulation');
 
+    // Store previous dimensions for scaling
+    const prevWidth = this.world.width;
+    const prevHeight = this.world.height;
+
+    // Ensure canvas dimensions match the container/window
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = this.canvas.clientWidth * dpr;
+    this.canvas.height = this.canvas.clientHeight * dpr;
+
     // Update world dimensions
     this.world.width = this.canvas.width;
     this.world.height = this.canvas.height;
 
-    logger.info(`New world dimensions: ${this.world.width}x${this.world.height}`);
-
-    // Update spatial grid dimensions
+    // Resize spatial grid
     this.spatialGrid.resize(this.world.width, this.world.height);
-    logger.info('Spatial grid resized');
 
-    // Make sure fish are within the new boundaries
-    for (const fish of this.world.creatures) {
-      if (fish.location.x > this.world.width) {
-        fish.location.x = this.world.width - SIMULATION.RESIZE_PADDING;
+    // Resize offscreen canvas
+    this.offscreenCanvas.width = this.canvas.width;
+    this.offscreenCanvas.height = this.canvas.height;
+
+    // Scale fish positions to match the new dimensions
+    if (prevWidth > 0 && prevHeight > 0) {
+      const widthRatio = this.world.width / prevWidth;
+      const heightRatio = this.world.height / prevHeight;
+
+      for (const fish of this.world.creatures) {
+        // Scale fish position by the ratio of new to old dimensions
+        fish.location.x *= widthRatio;
+        fish.location.y *= heightRatio;
+
+        // Ensure fish are within bounds
+        fish.location.x = Math.min(
+          Math.max(fish.location.x, SIMULATION.BOUNDARY_DISTANCE),
+          this.world.width - SIMULATION.BOUNDARY_DISTANCE
+        );
+        fish.location.y = Math.min(
+          Math.max(fish.location.y, SIMULATION.BOUNDARY_DISTANCE),
+          this.world.height - SIMULATION.BOUNDARY_DISTANCE
+        );
       }
-      if (fish.location.y > this.world.height) {
-        fish.location.y = this.world.height - SIMULATION.RESIZE_PADDING;
+
+      // If the window size increased significantly, adjust fish count
+      if (this.currentQuality === 'high' && (widthRatio > 1.2 || heightRatio > 1.2)) {
+        // Calculate the ideal fish count for this screen size
+        const scaledWidth = this.canvas.width / dpr;
+        const idealFishCount = Math.min(
+          Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
+          SIMULATION.MAX_FISH
+        );
+
+        // Only add more fish if we're below the ideal count
+        if (idealFishCount > this.world.creatures.length) {
+          const additionalFish = Math.min(
+            idealFishCount - this.world.creatures.length,
+            SIMULATION.MAX_FISH - this.world.creatures.length
+          );
+
+          if (additionalFish > 0) {
+            this.addFish(additionalFish);
+            logger.info(
+              `Added ${additionalFish} fish after resize, new total: ${this.world.creatures.length}`
+            );
+          }
+        }
       }
     }
+
+    logger.info(`Canvas resized to ${this.canvas.width}x${this.canvas.height} (DPR: ${dpr})`);
   }
 
   /**
@@ -424,8 +537,20 @@ export class Simulation {
     this.world.creatures = [];
 
     // Calculate number of fish based on screen size or use provided value
-    const fishCount = numFish || Math.min((window.innerWidth / 600) * 50, 50);
-    logger.info(`Initializing ${fishCount} fish for simulation`);
+    // Use canvas.width which already factors in DPR instead of window.innerWidth
+    const dpr = window.devicePixelRatio || 1;
+    const scaledWidth = this.canvas.width / dpr; // Convert back to CSS pixels for comparison
+    const fishCount =
+      numFish ||
+      Math.min(
+        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
+        // Base number on actual canvas size (with DPR)
+        Math.min((this.canvas.width / 600) * 50, SIMULATION.MAX_FISH)
+      );
+
+    logger.info(
+      `Initializing ${fishCount} fish for simulation (DPR: ${dpr}, canvas width: ${this.canvas.width})`
+    );
 
     // Create fish with random positions and sizes
     for (let i = 0; i < fishCount; i++) {
@@ -460,12 +585,11 @@ export class Simulation {
    * @private
    */
   private timestep(): void {
-    logger.debug('Timestep called, drawing frame with', this.world.creatures.length, 'fish');
-
-    this.ctx.globalAlpha = SIMULATION.MIN_ALPHA + SIMULATION.MAX_ALPHA_RANGE * this.alpha;
-    this.ctx.fillStyle = SIMULATION.BACKGROUND_COLOR;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.globalAlpha = this.alpha;
+    // Clear the offscreen canvas
+    this.offscreenCtx.globalAlpha = 0.2 + 0.6 * this.alpha;
+    this.offscreenCtx.fillStyle = SIMULATION.BACKGROUND_COLOR;
+    this.offscreenCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.offscreenCtx.globalAlpha = this.alpha;
 
     // Ensure Fish.showBehavior is in sync with this instance's showBehavior
     Fish.showBehavior = this.showBehavior;
@@ -496,7 +620,7 @@ export class Simulation {
       if (this.highlightedFishIndex !== undefined && this.world.creatures.length > 0) {
         const highlightedFish = this.world.creatures[this.highlightedFishIndex];
         this.spatialGrid.drawGrid(
-          this.ctx,
+          this.offscreenCtx as CanvasRenderingContext2D,
           this.world.width,
           this.world.height,
           highlightedFish.lookRange,
@@ -504,69 +628,118 @@ export class Simulation {
         );
 
         // Save canvas state
-        this.ctx.save();
+        this.offscreenCtx.save();
 
         // Draw a line from the mouse to the highlighted fish
-        this.ctx.strokeStyle = 'rgba(70, 130, 180, 0.6)'; // Steel blue, semi-transparent
-        this.ctx.setLineDash([8, 4]); // Dashed line
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.mouse.x, this.mouse.y);
-        this.ctx.lineTo(highlightedFish.location.x, highlightedFish.location.y);
-        this.ctx.stroke();
+        this.offscreenCtx.strokeStyle = 'rgba(70, 130, 180, 0.6)'; // Steel blue, semi-transparent
+        this.offscreenCtx.setLineDash([8, 4]); // Dashed line
+        this.offscreenCtx.lineWidth = 2;
+        this.offscreenCtx.beginPath();
+        this.offscreenCtx.moveTo(this.mouse.x, this.mouse.y);
+        this.offscreenCtx.lineTo(highlightedFish.location.x, highlightedFish.location.y);
+        this.offscreenCtx.stroke();
 
         // Draw a small circle at the mouse position
-        this.ctx.fillStyle = 'rgba(70, 130, 180, 0.6)';
-        this.ctx.beginPath();
-        this.ctx.arc(this.mouse.x, this.mouse.y, 6, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.offscreenCtx.fillStyle = 'rgba(70, 130, 180, 0.6)';
+        this.offscreenCtx.beginPath();
+        this.offscreenCtx.arc(this.mouse.x, this.mouse.y, 6, 0, Math.PI * 2);
+        this.offscreenCtx.fill();
 
-        this.ctx.restore();
+        this.offscreenCtx.restore();
       } else {
-        this.spatialGrid.drawGrid(this.ctx, this.world.width, this.world.height);
+        this.spatialGrid.drawGrid(
+          this.offscreenCtx as CanvasRenderingContext2D,
+          this.world.width,
+          this.world.height
+        );
       }
     }
 
     for (const fish of this.world.creatures) {
-      if (this.follow) {
-        fish.follow(this.mouse, FISH.FOLLOW_RADIUS);
+      // Only update and render fish that are on-screen or close to the edges (culling)
+      if (this.isFishVisible(fish)) {
+        if (this.follow) {
+          fish.follow(this.mouse, FISH.FOLLOW_RADIUS);
+        }
+
+        // Use spatial partitioning for more efficient neighbor lookup
+        const nearbyFish = this.spatialGrid.query(fish.location, fish.lookRange);
+        const neighbors = fish.filterVisibleNeighbors(nearbyFish, MATH.FULL_CIRCLE);
+
+        const { bigger, similar, smaller } = categorizeFishByMass(
+          fish,
+          neighbors,
+          FISH.MASS_THRESHOLD_BIGGER,
+          FISH.MASS_THRESHOLD_SMALLER
+        );
+
+        if (similar.length) {
+          fish.shoal(similar);
+        } else {
+          fish.wander();
+        }
+
+        fish.boundaries(this.world);
+
+        if (bigger.length) {
+          fish.avoid(bigger, FISH.AVOID_RANGE);
+        }
+
+        if (smaller.length) {
+          fish.chase(smaller);
+        }
+
+        fish.update();
+        fish.draw(this.offscreenCtx as CanvasRenderingContext2D);
       }
-
-      // Use spatial partitioning for more efficient neighbor lookup
-      const nearbyFish = this.spatialGrid.query(fish.location, fish.lookRange);
-      const neighbors = fish.filterVisibleNeighbors(nearbyFish, MATH.FULL_CIRCLE);
-
-      const { bigger, similar, smaller } = categorizeFishByMass(
-        fish,
-        neighbors,
-        FISH.MASS_THRESHOLD_BIGGER,
-        FISH.MASS_THRESHOLD_SMALLER
-      );
-
-      if (similar.length) {
-        fish.shoal(similar);
-      } else {
-        fish.wander();
-      }
-
-      fish.boundaries(this.world);
-
-      if (bigger.length) {
-        fish.avoid(bigger, FISH.AVOID_RANGE);
-      }
-
-      if (smaller.length) {
-        fish.chase(smaller);
-      }
-
-      fish.update();
-      fish.draw(this.ctx);
     }
 
     // If showBehavior is enabled, display additional information about the spatial grid
     if (this.showBehavior) {
       this.drawGridInfo();
     }
+
+    // Draw FPS counter if enabled or if behavior visualization is enabled
+    if (this.showFps || this.showBehavior) {
+      this.drawFps(this.offscreenCtx as CanvasRenderingContext2D);
+    }
+
+    // Copy offscreen canvas to visible canvas
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+  }
+
+  /**
+   * Draw FPS counter for debugging
+   *
+   * @param ctx - The canvas context to draw the FPS counter
+   * @private
+   */
+  private drawFps(ctx: CanvasRenderingContext2D): void {
+    const dpr = window.devicePixelRatio || 1;
+    const baseFontSize = 16;
+    const scaledFontSize = baseFontSize * Math.max(1, Math.min(1.75, dpr)); // Cap the scaling to 1.75x
+
+    ctx.fillStyle = 'black';
+    ctx.font = `${scaledFontSize}px Arial`;
+
+    // Position at bottom left corner with some margin
+    const margin = 10 * Math.max(1, Math.min(1.2, dpr));
+    const text = `FPS: ${this.fps} (${this.currentQuality})`;
+    const metrics = ctx.measureText(text);
+    const textHeight = scaledFontSize;
+
+    // Draw with background for better visibility
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillRect(
+      margin - 5,
+      this.canvas.height - margin - textHeight - 5,
+      metrics.width + 10,
+      textHeight + 10
+    );
+
+    ctx.fillStyle = 'black';
+    ctx.fillText(text, margin, this.canvas.height - margin);
   }
 
   /**
@@ -591,19 +764,24 @@ export class Simulation {
     const cellSize = this.spatialGrid.getCellSize();
     const stats = this.spatialGrid.getGridStats();
 
+    // Scale font size based on DPR - make text larger
+    const dpr = window.devicePixelRatio || 1;
+    const baseFontSize = 14; // Increased from 12
+    const scaledFontSize = baseFontSize * Math.max(1, Math.min(1.75, dpr)); // Cap scaling to 1.75x
+    const lineHeight = scaledFontSize * 1.5;
+
     // Set up font and measure text to determine background size
-    this.ctx.font = '12px Arial';
-    this.ctx.save();
+    this.offscreenCtx.font = `${scaledFontSize}px Arial`;
+    this.offscreenCtx.save();
 
     // Position the info at the top-left corner with a small margin
-    const margin = 10;
+    const margin = 15 * Math.max(1, Math.min(1.2, dpr)); // Increased margin
     const x = margin;
-    const lineHeight = 18;
     const y = margin + lineHeight;
 
     // Create text lines for the info panel, adapting to screen width
-    const isNarrowScreen = this.canvas.width < 500;
-    const isMobileScreen = this.canvas.width < 380;
+    const isNarrowScreen = this.canvas.width < 500 * dpr; // Adjust threshold for DPR
+    const isMobileScreen = this.canvas.width < 380 * dpr; // Adjust threshold for DPR
 
     const lines = [];
     lines.push(`Spatial Grid: Cell Size = ${cellSize}px`);
@@ -635,7 +813,9 @@ export class Simulation {
         );
       } else {
         lines.push(
-          `Highlighted Fish: Mass = ${highlightedFish.mass.toFixed(2)}, Look Range = ${Math.round(highlightedFish.lookRange)}px, Distance = ${distanceToMouse}px`
+          `Highlighted Fish: Mass = ${highlightedFish.mass.toFixed(2)}, Look Range = ${Math.round(
+            highlightedFish.lookRange
+          )}px, Distance = ${distanceToMouse}px`
         );
       }
     }
@@ -643,26 +823,43 @@ export class Simulation {
     // Measure the maximum text width to determine background width
     let maxWidth = 0;
     for (const line of lines) {
-      const width = this.ctx.measureText(line).width;
+      const width = this.offscreenCtx.measureText(line).width;
       maxWidth = Math.max(maxWidth, width);
     }
 
     // Draw the background rectangle with appropriate size
-    const paddingX = 20;
-    const paddingY = 10;
+    const paddingX = 25 * Math.max(1, Math.min(1.2, dpr)); // Increased padding
+    const paddingY = 15 * Math.max(1, Math.min(1.2, dpr)); // Increased padding
     const rectWidth = maxWidth + paddingX * 2;
     const rectHeight = lines.length * lineHeight + paddingY * 2;
 
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    this.ctx.fillRect(x - paddingX, y - lineHeight - paddingY, rectWidth, rectHeight);
+    this.offscreenCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    this.offscreenCtx.fillRect(x - paddingX, y - lineHeight - paddingY, rectWidth, rectHeight);
 
     // Draw the text
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this.offscreenCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     for (let i = 0; i < lines.length; i++) {
-      this.ctx.fillText(lines[i], x, y + i * lineHeight);
+      this.offscreenCtx.fillText(lines[i], x, y + i * lineHeight);
     }
 
-    this.ctx.restore();
+    this.offscreenCtx.restore();
+  }
+
+  /**
+   * Helper method to check if a fish is visible
+   *
+   * @param fish - The fish to check
+   * @returns - True if the fish is visible, false otherwise
+   * @private
+   */
+  private isFishVisible(fish: Fish): boolean {
+    const margin = fish.length * 2; // Add margin so fish don't pop in/out suddenly
+    return (
+      fish.location.x + margin >= 0 &&
+      fish.location.x - margin <= this.canvas.width &&
+      fish.location.y + margin >= 0 &&
+      fish.location.y - margin <= this.canvas.height
+    );
   }
 
   /**
@@ -677,22 +874,10 @@ export class Simulation {
    * @private
    */
   private slow(): void {
-    logger.debug(`Slowing animation, current interval: ${this.interval}`);
-    if (this.timeline) {
-      clearInterval(this.timeline);
-      this.timeline = null;
-      logger.debug('Cleared existing animation timeline');
-    }
-
-    if (this.interval < SIMULATION.SLOW_INTERVAL) {
-      this.alpha -= SIMULATION.ALPHA_STEP;
-      this.timestep();
-      setTimeout(() => this.slow(), this.interval++);
-      logger.debug(`Transitioning to slower speed, new interval: ${this.interval}`);
-    } else {
-      this.timeline = window.setInterval(() => this.timestep(), this.interval);
-      logger.debug(`Reached target slow interval: ${this.interval}`);
-    }
+    this.interval = SIMULATION.SLOW_INTERVAL;
+    this.alpha = SIMULATION.SLOW_ALPHA;
+    this.slowmo = true;
+    logger.info('Simulation slowed down');
   }
 
   /**
@@ -708,23 +893,10 @@ export class Simulation {
    * @private
    */
   private fast(): void {
-    logger.debug(`Speeding up animation, current interval: ${this.interval}`);
-    if (this.timeline) {
-      clearInterval(this.timeline);
-      this.timeline = null;
-      logger.debug('Cleared existing animation timeline');
-    }
-
-    if (this.interval > SIMULATION.NORMAL_INTERVAL) {
-      this.alpha += SIMULATION.ALPHA_STEP;
-      this.timestep();
-      setTimeout(() => this.fast(), this.interval--);
-      logger.debug(`Transitioning to faster speed, new interval: ${this.interval}`);
-    } else {
-      this.alpha = SIMULATION.DEFAULT_ALPHA;
-      this.timeline = window.setInterval(() => this.timestep(), this.interval);
-      logger.debug(`Reached target fast interval: ${this.interval}`);
-    }
+    this.interval = SIMULATION.NORMAL_INTERVAL;
+    this.alpha = SIMULATION.DEFAULT_ALPHA;
+    this.slowmo = false;
+    logger.info('Simulation at normal speed');
   }
 
   /**
@@ -740,14 +912,9 @@ export class Simulation {
   public start(): void {
     logger.info('Starting simulation with', this.world.creatures.length, 'fish');
     logger.info('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
-    logger.info('Initial follow state:', this.follow);
 
-    // Make sure we draw at least one frame immediately
-    this.timestep();
-
-    // Then start the animation loop
-    this.fast();
-    logger.info('Animation loop started with interval:', this.interval);
+    // Start animation loop with requestAnimationFrame
+    this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
 
     setTimeout(() => {
       window.scrollTo(0, 1);
@@ -762,13 +929,183 @@ export class Simulation {
    * It can be called to pause the simulation or before cleanup.
    */
   public stop(): void {
-    logger.info('Stopping simulation animation loop');
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    // Clean up any remaining interval (for backward compatibility)
     if (this.timeline) {
       clearInterval(this.timeline);
       this.timeline = null;
-      logger.info('Animation timeline cleared');
-    } else {
-      logger.info('No active timeline to clear');
     }
+
+    logger.info('Simulation stopped');
+  }
+
+  /**
+   * Update the animate method to use requestAnimationFrame
+   *
+   * @param timestamp - The current timestamp
+   * @private
+   */
+  private animate(timestamp: number): void {
+    // Calculate FPS
+    if (!this.lastFrameTime) {
+      this.lastFrameTime = timestamp;
+      this.lastFpsUpdate = timestamp;
+    }
+
+    const elapsed = timestamp - this.lastFrameTime;
+    this.frameCount++;
+
+    // Update FPS every fpsUpdateInterval
+    if (timestamp - this.lastFpsUpdate >= this.fpsUpdateInterval) {
+      this.fps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdate));
+      this.lastFpsUpdate = timestamp;
+      this.frameCount = 0;
+
+      // Optionally log FPS for debugging
+      logger.debug(`Current FPS: ${this.fps}`);
+
+      // Update quality settings based on performance
+      this.updateAdaptiveQuality();
+    }
+
+    // Only update at the desired interval
+    if (elapsed >= this.interval) {
+      this.lastFrameTime = timestamp;
+      this.timestep();
+    }
+
+    // Schedule next frame
+    this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+  }
+
+  /**
+   * Update FPS monitoring to adjust quality
+   *
+   * @private
+   */
+  private updateAdaptiveQuality(): void {
+    if (!this.adaptiveQuality) return;
+
+    // Add current FPS to history
+    this.fpsHistory.push(this.fps);
+    if (this.fpsHistory.length > this.fpsHistorySize) {
+      this.fpsHistory.shift();
+    }
+
+    // Need enough samples to make a decision
+    if (this.fpsHistory.length < this.fpsHistorySize) return;
+
+    // Calculate average FPS
+    const avgFps = this.fpsHistory.reduce((sum, fps) => sum + fps, 0) / this.fpsHistory.length;
+
+    // Adjust quality based on FPS
+    const previousQuality = this.currentQuality;
+
+    if (avgFps < this.fpsThreshold.low && this.currentQuality !== 'low') {
+      this.currentQuality = 'low';
+    } else if (
+      avgFps >= this.fpsThreshold.low &&
+      avgFps < this.fpsThreshold.medium &&
+      this.currentQuality !== 'medium'
+    ) {
+      this.currentQuality = 'medium';
+    } else if (avgFps >= this.fpsThreshold.medium && this.currentQuality !== 'high') {
+      this.currentQuality = 'high';
+
+      // When upgrading to high quality, calculate the appropriate fish count for the screen size
+      const dpr = window.devicePixelRatio || 1;
+      const scaledWidth = this.canvas.width / dpr;
+      const idealFishCount = Math.min(
+        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
+        SIMULATION.MAX_FISH
+      );
+
+      // Update the high quality fish max based on screen size
+      // This ensures we don't add too many fish on smaller screens
+      this.qualityLevels.high.fishMax = Math.min(idealFishCount, SIMULATION.MAX_FISH);
+      logger.debug(`Updated high quality fishMax to ${this.qualityLevels.high.fishMax}`);
+    }
+
+    // If quality changed, adjust settings
+    if (previousQuality !== this.currentQuality) {
+      this.applyQualitySettings();
+    }
+  }
+
+  private applyQualitySettings(): void {
+    const settings = this.qualityLevels[this.currentQuality];
+
+    // If upgrading to high quality, recalculate the max fish value based on screen size
+    if (this.currentQuality === 'high') {
+      const dpr = window.devicePixelRatio || 1;
+      const scaledWidth = this.canvas.width / dpr;
+      const idealFishCount = Math.min(
+        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
+        SIMULATION.MAX_FISH
+      );
+
+      // Update the target based on current screen size, but don't exceed MAX_FISH
+      settings.fishMax = Math.min(idealFishCount, SIMULATION.MAX_FISH);
+    }
+
+    // Adjust number of fish
+    const currentFishCount = this.world.creatures.length;
+    const targetFishCount = settings.fishMax;
+
+    if (currentFishCount > targetFishCount) {
+      // Remove excess fish
+      this.world.creatures = this.world.creatures.slice(0, targetFishCount);
+    } else if (currentFishCount < targetFishCount) {
+      // Add more fish
+      this.addFish(targetFishCount - currentFishCount);
+    }
+
+    // Set detail level on fish
+    for (const fish of this.world.creatures) {
+      fish.detailLevel = settings.detailLevel;
+    }
+
+    logger.info(
+      `Adjusted quality to ${this.currentQuality}: ${this.world.creatures.length} fish, max ${settings.fishMax}`
+    );
+  }
+
+  // Method to add fish
+  private addFish(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const mass = 0.5 + Math.random() * Math.random() * Math.random() * Math.random() * 2;
+      const x = Math.random() * this.world.width;
+      const y = Math.random() * this.world.height;
+      this.world.creatures.push(new Fish(mass, x, y));
+    }
+  }
+
+  // Toggle FPS display
+  public toggleFps(): void {
+    this.showFps = !this.showFps;
+  }
+
+  /**
+   * Handles display changes that might affect device pixel ratio.
+   *
+   * This method should be called when:
+   * - The window is moved to a display with different DPR
+   * - The browser zoom level changes
+   * - Any other scenario where DPR might change without a resize event
+   *
+   * It forces a recalculation of canvas dimensions and fish positions.
+   */
+  public handleDisplayChange(): void {
+    logger.info('Handling display change or DPR update');
+
+    // Re-apply resize which will adjust for any DPR changes
+    this.resize();
+
+    // If quality adjustments are needed based on new display
+    this.updateAdaptiveQuality();
   }
 }

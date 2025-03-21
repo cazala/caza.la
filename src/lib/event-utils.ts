@@ -5,11 +5,33 @@ import { logger } from './logging';
  * Updates mouse/touch position from an event
  * @param event Mouse or touch event
  * @param position Vector to update with new position
+ * @param canvas The canvas element to get correct coordinates relative to DPR
  * @returns The updated position vector
  */
-export function updatePositionFromEvent(event: MouseEvent | Touch, position: Vector): Vector {
-  position.set(event.clientX, event.clientY);
-  logger.debug(`Position updated to: (${position.x}, ${position.y})`);
+export function updatePositionFromEvent(
+  event: MouseEvent | Touch,
+  position: Vector,
+  canvas?: HTMLCanvasElement
+): Vector {
+  if (canvas) {
+    // Get DPR and calculate scaling
+    const dpr = window.devicePixelRatio || 1;
+
+    // Get the canvas bounding rect
+    const rect = canvas.getBoundingClientRect();
+
+    // Calculate the correct position taking into account DPR
+    const x = (event.clientX - rect.left) * dpr;
+    const y = (event.clientY - rect.top) * dpr;
+
+    position.set(x, y);
+    logger.debug(`Position updated with DPR ${dpr}: (${position.x}, ${position.y})`);
+  } else {
+    // Legacy behavior for backward compatibility
+    position.set(event.clientX, event.clientY);
+    logger.debug(`Position updated to: (${position.x}, ${position.y})`);
+  }
+
   return position;
 }
 

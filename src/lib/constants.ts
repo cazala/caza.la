@@ -51,6 +51,7 @@ export const SIMULATION = {
   NORMAL_INTERVAL: 20,
   SLOW_INTERVAL: 45,
   ALPHA_STEP: 0.032,
+  SLOW_ALPHA: 0.5, // Alpha value for slow motion mode
 
   // Interaction settings
   CLICK_THRESHOLD: 300, // ms
@@ -67,6 +68,10 @@ export const SIMULATION = {
   BACKGROUND_COLOR: '#ffffff',
   MIN_ALPHA: 0.2,
   MAX_ALPHA_RANGE: 0.6,
+
+  // Fish count settings
+  MIN_FISH: 30,
+  MAX_FISH: 200,
 
   // Spatial partitioning settings
   SPATIAL_CELL_SIZE: 100, // Should be tuned based on typical fish interaction range

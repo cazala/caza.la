@@ -152,12 +152,15 @@ export class SpatialGrid {
     highlightRadius?: number,
     highlightPosition?: Vector
   ): void {
+    // Get device pixel ratio for appropriate scaling
+    const dpr = window.devicePixelRatio || 1;
+
     // Save the current canvas state
     ctx.save();
 
     // Set grid style - using a more subtle blue for grid lines
     ctx.strokeStyle = 'rgba(120, 140, 180, 0.2)'; // Soft blue, very transparent
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1, dpr * 0.5); // Scale line width with DPR, but keep a minimum
 
     // Draw vertical grid lines
     for (let x = 0; x <= worldWidth; x += this.cellSize) {
@@ -190,13 +193,16 @@ export class SpatialGrid {
         // Fill the cell
         ctx.fillRect(x, y, this.cellSize, this.cellSize);
 
-        // Optionally, show fish count in each cell
+        // Optionally, show fish count in each cell - scale font with DPR
+        const baseFontSize = 10;
+        const scaledFontSize = baseFontSize * Math.max(1, Math.min(1.5, dpr));
+
         ctx.fillStyle = 'rgba(40, 60, 80, 0.5)'; // Dark blue for text
-        ctx.font = '10px Arial';
+        ctx.font = `${scaledFontSize}px Arial`;
         ctx.fillText(
           fishes.length.toString(),
-          x + this.cellSize / 2 - 3,
-          y + this.cellSize / 2 + 3
+          x + this.cellSize / 2 - scaledFontSize / 3,
+          y + this.cellSize / 2 + scaledFontSize / 3
         );
         ctx.fillStyle = 'rgba(72, 118, 164, 0.15)'; // Reset for the next cell
       }
@@ -221,7 +227,7 @@ export class SpatialGrid {
 
       // Draw the actual query circle
       ctx.strokeStyle = 'rgba(52, 152, 219, 0.6)'; // Brighter blue for the radius circle
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, dpr); // Scale line width with DPR
       ctx.beginPath();
       ctx.arc(highlightPosition.x, highlightPosition.y, highlightRadius, 0, Math.PI * 2);
       ctx.stroke();

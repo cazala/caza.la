@@ -30,6 +30,7 @@ export class Fish {
   acceleration: Vector;
   wandering: Vector;
   color: string;
+  detailLevel: number = 3; // 3 = high, 2 = medium, 1 = low
 
   // For behavior visualization
   avoidList: Fish[] | null = null;
@@ -62,8 +63,15 @@ export class Fish {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
-    this.drawBehavior(ctx);
-    drawFishShape(ctx, this);
+    if (this.detailLevel >= 3) {
+      this.drawBehavior(ctx);
+    }
+
+    if (this.detailLevel === 1) {
+      this.drawSimpleFish(ctx);
+    } else {
+      drawFishShape(ctx, this);
+    }
   }
 
   drawBehavior(ctx: CanvasRenderingContext2D): void {
@@ -78,6 +86,31 @@ export class Fish {
     } else {
       this.color = FISH.DEFAULT_COLOR;
     }
+  }
+
+  drawSimpleFish(ctx: CanvasRenderingContext2D): void {
+    const angle = this.velocity.angle();
+
+    const x1 = this.location.x + Math.cos(angle) * this.base;
+    const y1 = this.location.y + Math.sin(angle) * this.base;
+
+    const x = this.location.x - Math.cos(angle) * this.length;
+    const y = this.location.y - Math.sin(angle) * this.length;
+
+    const x2 = this.location.x + Math.cos(angle + this.HALF_PI) * this.base;
+    const y2 = this.location.y + Math.sin(angle + this.HALF_PI) * this.base;
+
+    const x3 = this.location.x + Math.cos(angle - this.HALF_PI) * this.base;
+    const y3 = this.location.y + Math.sin(angle - this.HALF_PI) * this.base;
+
+    ctx.fillStyle = this.color || '#000000';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x3, y3);
+    ctx.closePath();
+    ctx.fill();
   }
 
   update(): void {

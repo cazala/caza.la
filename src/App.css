@@ -11,9 +11,10 @@ body {
   position: relative;
   color: black;
   background: white;
-  font-family: "Inconsolata", monospace;
+  font-family: 'Inconsolata', monospace;
   font-size: 100%;
   font-weight: 400;
+  min-height: 100% !important;
 }
 
 #root {
@@ -41,10 +42,8 @@ body {
 
 .text {
   max-width: 400px;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: relative;
+  margin: auto;
   text-shadow: 0px 0px 20px white;
   line-height: 1.2;
   z-index: 10;
@@ -74,12 +73,12 @@ li {
 }
 
 li:after {
-  content: "|";
+  content: '|';
   margin: 0px 10px;
 }
 
 li:last-child:after {
-  content: "";
+  content: '';
 }
 
 .play {
@@ -96,5 +95,13 @@ li:last-child:after {
   .text {
     width: calc(100% - 80px);
     font-size: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  .app {
+    height: -webkit-fill-available;
   }
 }
