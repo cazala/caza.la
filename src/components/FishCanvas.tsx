@@ -190,6 +190,12 @@ const FishCanvas: React.FC = () => {
         background: 'transparent',
         pointerEvents: 'auto',
         overflow: 'hidden', // Ensure no overflow
+        // Disable iOS text selection, magnifying glass and callout behavior
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        touchAction: 'manipulation', // Optimizes for touch input, disables unnecessary browser behaviors
       }}
     />
   );
