@@ -72,6 +72,8 @@ export const SIMULATION = {
   // Fish count settings
   MIN_FISH: 30,
   MAX_FISH: 200,
+  BASE_FISH_COUNT: 50, // Base number of fish for reference screen width
+  REFERENCE_WIDTH: 600, // Width in pixels that should have BASE_FISH_COUNT fish
 
   // Spatial partitioning settings
   SPATIAL_CELL_SIZE: 100, // Should be tuned based on typical fish interaction range
@@ -87,3 +89,18 @@ export const CANVAS = {
   DEFAULT_ALPHA: 1,
   TRAIL_ALPHA: 0.2,
 };
+
+/**
+ * Calculates the optimal number of fish based on screen width
+ *
+ * @param width - Screen width (in pixels)
+ * @param dpr - Device pixel ratio (defaults to 1)
+ * @returns The optimal number of fish for the given width, bounded by MIN_FISH and MAX_FISH
+ */
+export function calculateOptimalFishCount(width: number): number {
+  // For actual canvas dimensions that include DPR
+  const baseCount = (width / SIMULATION.REFERENCE_WIDTH) * SIMULATION.BASE_FISH_COUNT;
+
+  // Ensure we have a reasonable minimum and maximum
+  return Math.min(Math.max(baseCount, SIMULATION.MIN_FISH), SIMULATION.MAX_FISH);
+}

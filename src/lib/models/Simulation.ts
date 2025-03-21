@@ -1,7 +1,7 @@
 import { Fish, World } from './Fish';
 import { Vector } from './Vector';
 import { logger } from '../utils/logging';
-import { FISH, SIMULATION, MATH } from '../utils/constants';
+import { FISH, SIMULATION, MATH, calculateOptimalFishCount } from '../utils/constants';
 import {
   updatePositionFromEvent,
   isQuickInteraction,
@@ -490,12 +490,8 @@ export class Simulation {
 
       // If the window size increased significantly, adjust fish count
       if (this.currentQuality === 'high' && (widthRatio > 1.2 || heightRatio > 1.2)) {
-        // Calculate the ideal fish count for this screen size
-        const scaledWidth = this.canvas.width / dpr;
-        const idealFishCount = Math.min(
-          Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
-          SIMULATION.MAX_FISH
-        );
+        // Calculate the ideal fish count for this screen size using our utility function
+        const idealFishCount = calculateOptimalFishCount(this.canvas.width);
 
         // Only add more fish if we're below the ideal count
         if (idealFishCount > this.world.creatures.length) {
@@ -536,20 +532,11 @@ export class Simulation {
     // Clear any existing fish
     this.world.creatures = [];
 
-    // Calculate number of fish based on screen size or use provided value
-    // Use canvas.width which already factors in DPR instead of window.innerWidth
-    const dpr = window.devicePixelRatio || 1;
-    const scaledWidth = this.canvas.width / dpr; // Convert back to CSS pixels for comparison
-    const fishCount =
-      numFish ||
-      Math.min(
-        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
-        // Base number on actual canvas size (with DPR)
-        Math.min((this.canvas.width / 600) * 50, SIMULATION.MAX_FISH)
-      );
+    // Use the utility function to calculate fish count if not provided
+    const fishCount = numFish || calculateOptimalFishCount(this.canvas.width);
 
     logger.info(
-      `Initializing ${fishCount} fish for simulation (DPR: ${dpr}, canvas width: ${this.canvas.width})`
+      `Initializing ${fishCount} fish for simulation (DPR: ${window.devicePixelRatio || 1}, canvas width: ${this.canvas.width})`
     );
 
     // Create fish with random positions and sizes
@@ -1016,13 +1003,8 @@ export class Simulation {
     } else if (avgFps >= this.fpsThreshold.medium && this.currentQuality !== 'high') {
       this.currentQuality = 'high';
 
-      // When upgrading to high quality, calculate the appropriate fish count for the screen size
-      const dpr = window.devicePixelRatio || 1;
-      const scaledWidth = this.canvas.width / dpr;
-      const idealFishCount = Math.min(
-        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
-        SIMULATION.MAX_FISH
-      );
+      // Calculate ideal fish count using our utility function
+      const idealFishCount = calculateOptimalFishCount(this.canvas.width);
 
       // Update the high quality fish max based on screen size
       // This ensures we don't add too many fish on smaller screens
@@ -1041,12 +1023,8 @@ export class Simulation {
 
     // If upgrading to high quality, recalculate the max fish value based on screen size
     if (this.currentQuality === 'high') {
-      const dpr = window.devicePixelRatio || 1;
-      const scaledWidth = this.canvas.width / dpr;
-      const idealFishCount = Math.min(
-        Math.max((scaledWidth / 600) * 50, SIMULATION.MIN_FISH),
-        SIMULATION.MAX_FISH
-      );
+      // Calculate ideal fish count using our utility function
+      const idealFishCount = calculateOptimalFishCount(this.canvas.width);
 
       // Update the target based on current screen size, but don't exceed MAX_FISH
       settings.fishMax = Math.min(idealFishCount, SIMULATION.MAX_FISH);

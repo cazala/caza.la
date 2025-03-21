@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Simulation, SimulationOptions } from '../lib/models/Simulation';
 import { logger } from '../lib/utils/logging';
-import { SIMULATION } from '../lib/utils/constants';
+import { SIMULATION, calculateOptimalFishCount } from '../lib/utils/constants';
 
 const FishCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -100,13 +100,8 @@ const FishCanvas: React.FC = () => {
         // Create a new simulation instance
         const simulationOptions: SimulationOptions = {
           canvasElement: canvas,
-          // Account for DPR in fish count calculation
-          numFish: (() => {
-            // Base it on the actual canvas dimensions (which include DPR scaling)
-            const baseCount = (canvas.width / 600) * 50;
-            // Ensure we have a reasonable minimum and maximum
-            return Math.min(Math.max(baseCount, SIMULATION.MIN_FISH), SIMULATION.MAX_FISH);
-          })(),
+          // Use the utility function to calculate optimal fish count
+          numFish: calculateOptimalFishCount(canvas.width),
         };
 
         logger.info('Creating new simulation instance');
