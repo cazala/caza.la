@@ -37,6 +37,9 @@ export class Fish {
   chaseList: Fish[] | null = null;
   shoalList: Fish[] | null = null;
 
+  // Added for boundary checking
+  private _world: World | null = null;
+
   constructor(mass: number, x: number, y: number, color: string = FISH.DEFAULT_COLOR) {
     this.ID = Fish.uid();
     this.mass = mass;
@@ -121,6 +124,45 @@ export class Fish {
     }
     this.location.add(this.velocity);
     this.acceleration.mul(0);
+
+    // Check if fish has gone too far outside boundaries and teleport if needed
+    this.checkOutOfBounds();
+  }
+
+  /**
+   * Checks if the fish has gone too far outside the simulation boundaries,
+   * and teleports it back if necessary
+   */
+  private checkOutOfBounds(): void {
+    // Get world boundaries from references stored in Fish
+    // These should be updated when the fish is added to the world or when the world is resized
+    if (!this._world) return;
+
+    const outOfBoundsThreshold = SIMULATION.BOUNDARY_DISTANCE * 5; // 5x the boundary force distance
+
+    // Check if fish is far outside boundaries
+    if (
+      this.location.x < -outOfBoundsThreshold ||
+      this.location.x > this._world.width + outOfBoundsThreshold ||
+      this.location.y < -outOfBoundsThreshold ||
+      this.location.y > this._world.height + outOfBoundsThreshold
+    ) {
+      // Fish is too far out, teleport it back
+
+      if (Fish.showBehavior) {
+        // Visual indicator for debugging
+        this.color = 'orange'; // Show teleported fish in orange briefly
+      }
+
+      // Teleport to a random position well within bounds
+      const safeMargin = SIMULATION.BOUNDARY_DISTANCE * 3;
+      this.location.x = safeMargin + Math.random() * (this._world.width - safeMargin * 2);
+      this.location.y = safeMargin + Math.random() * (this._world.height - safeMargin * 2);
+
+      // Randomize velocity to prevent it from immediately heading out again
+      const currentSpeed = this.velocity.mag() * 0.8; // Slightly reduce speed
+      this.velocity = Vector.random(currentSpeed);
+    }
   }
 
   applyForce(f: Vector): void {
@@ -128,20 +170,83 @@ export class Fish {
   }
 
   boundaries(world: World): void {
-    if (this.location.x < SIMULATION.BOUNDARY_DISTANCE) {
-      this.applyForce(new Vector(this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER, 0));
+    // Store reference to world for out-of-bounds checking
+    this._world = world;
+
+    const bounceMultiplier = 0.5; // Controls strength of bounce effect
+    let needsBounce = false;
+    const bounceFactor = 0;
+
+    // Check for fish at or just beyond boundaries
+    if (this.location.x <= SIMULATION.BOUNDARY_DISTANCE) {
+      // Apply stronger force the further outside it is
+      const distanceFactor = Math.max(0, 1 - this.location.x / SIMULATION.BOUNDARY_DISTANCE);
+      const forceMagnitude =
+        this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER * (1 + distanceFactor);
+      this.applyForce(new Vector(forceMagnitude, 0));
+
+      // If exactly at or beyond boundary, bounce
+      if (this.location.x <= 0) {
+        needsBounce = true;
+        // Reflect horizontal velocity component to create bounce
+        this.velocity.x = Math.abs(this.velocity.x) * bounceMultiplier;
+      }
     }
 
-    if (this.location.x > world.width - SIMULATION.BOUNDARY_DISTANCE) {
-      this.applyForce(new Vector(-this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER, 0));
+    if (this.location.x >= world.width - SIMULATION.BOUNDARY_DISTANCE) {
+      const distanceFactor = Math.max(
+        0,
+        (this.location.x - (world.width - SIMULATION.BOUNDARY_DISTANCE)) /
+          SIMULATION.BOUNDARY_DISTANCE
+      );
+      const forceMagnitude =
+        this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER * (1 + distanceFactor);
+      this.applyForce(new Vector(-forceMagnitude, 0));
+
+      if (this.location.x >= world.width) {
+        needsBounce = true;
+        this.velocity.x = -Math.abs(this.velocity.x) * bounceMultiplier;
+      }
     }
 
-    if (this.location.y < SIMULATION.BOUNDARY_DISTANCE) {
-      this.applyForce(new Vector(0, this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER));
+    if (this.location.y <= SIMULATION.BOUNDARY_DISTANCE) {
+      const distanceFactor = Math.max(0, 1 - this.location.y / SIMULATION.BOUNDARY_DISTANCE);
+      const forceMagnitude =
+        this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER * (1 + distanceFactor);
+      this.applyForce(new Vector(0, forceMagnitude));
+
+      if (this.location.y <= 0) {
+        needsBounce = true;
+        this.velocity.y = Math.abs(this.velocity.y) * bounceMultiplier;
+      }
     }
 
-    if (this.location.y > world.height - SIMULATION.BOUNDARY_DISTANCE) {
-      this.applyForce(new Vector(0, -this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER));
+    if (this.location.y >= world.height - SIMULATION.BOUNDARY_DISTANCE) {
+      const distanceFactor = Math.max(
+        0,
+        (this.location.y - (world.height - SIMULATION.BOUNDARY_DISTANCE)) /
+          SIMULATION.BOUNDARY_DISTANCE
+      );
+      const forceMagnitude =
+        this.maxforce * SIMULATION.BOUNDARY_FORCE_MULTIPLIER * (1 + distanceFactor);
+      this.applyForce(new Vector(0, -forceMagnitude));
+
+      if (this.location.y >= world.height) {
+        needsBounce = true;
+        this.velocity.y = -Math.abs(this.velocity.y) * bounceMultiplier;
+      }
+    }
+
+    // If we needed to bounce, ensure the fish is slightly inside the boundary to prevent immediate re-bounce
+    if (needsBounce) {
+      // Ensure fish is always at least 1 pixel inside the boundary
+      this.location.x = Math.max(1, Math.min(world.width - 1, this.location.x));
+      this.location.y = Math.max(1, Math.min(world.height - 1, this.location.y));
+
+      if (Fish.showBehavior) {
+        // Visual indicator for bouncing
+        this.color = 'yellow';
+      }
     }
   }
 
