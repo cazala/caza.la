@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Simulation, SimulationOptions } from '../lib/models/Simulation';
 import { logger } from '../lib/utils/logging';
-import { SIMULATION, calculateOptimalFishCount } from '../lib/utils/constants';
+import { calculateOptimalFishCount } from '../lib/utils/constants';
 
 const FishCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
