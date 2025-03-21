@@ -95,6 +95,15 @@ export class Simulation {
   private fpsHistory: number[] = [];
   private fpsHistorySize = 10;
 
+  // Track keys currently being pressed
+  private keysPressed: Record<string, boolean> = {};
+
+  // For continuous fish spawning/removal
+  private baseFishActionRate: number = 5; // base rate of fish per second
+  private maxFishActionRate: number = 200; // maximum rate of fish per second
+  private lastFishActionTime: number = 0;
+  private keyPressStartTimes: Record<string, number> = {}; // Track when keys were initially pressed
+
   /**
    * Creates a new fish simulation instance.
    *
@@ -214,13 +223,20 @@ export class Simulation {
   /**
    * Handles keyboard key down events.
    *
-   * Currently only logs the key press - may be expanded for keyboard controls.
+   * Updates the keysPressed state to track which keys are currently held down.
    *
    * @param e - The keyboard event containing key information
    * @private
    */
   private handleKeyDown(e: KeyboardEvent): void {
     logger.info('Key down event triggered:', e.key);
+
+    // Only set the start time if the key wasn't already pressed
+    if (!this.keysPressed[e.key]) {
+      this.keyPressStartTimes[e.key] = performance.now();
+    }
+
+    this.keysPressed[e.key] = true;
   }
 
   /**
@@ -229,12 +245,19 @@ export class Simulation {
    * Processes specific key releases to trigger simulation actions:
    * - Space key: Toggles slow motion mode by switching between fast and slow intervals
    * - F key: Toggles FPS display
+   * - Enter key: Spawns a new fish (also continuously while held down)
+   * - Delete/Backspace keys: Removes a random fish (also continuously while held down)
    *
    * @param e - The keyboard event containing key information
    * @private
    */
   private handleKeyUp(e: KeyboardEvent): void {
     logger.info('Key up event triggered:', e.key);
+
+    // Update key state
+    this.keysPressed[e.key] = false;
+    // Clear the key press start time
+    delete this.keyPressStartTimes[e.key];
 
     if (e.key === ' ' || e.key === 'Spacebar') {
       logger.info('Space key detected, toggling slowmo');
@@ -248,6 +271,7 @@ export class Simulation {
       logger.info('F key detected, toggling FPS display');
       this.toggleFps();
     }
+    // For Enter, Delete, and Backspace, we'll handle continuous action in the animate method
   }
 
   /**
@@ -960,6 +984,9 @@ export class Simulation {
       this.updateAdaptiveQuality();
     }
 
+    // Handle continuous fish actions (spawning/removal)
+    this.handleContinuousFishActions(timestamp);
+
     // Only update at the desired interval
     if (elapsed >= this.interval) {
       this.lastFrameTime = timestamp;
@@ -968,6 +995,95 @@ export class Simulation {
 
     // Schedule next frame
     this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+  }
+
+  /**
+   * Handle continuous fish spawning and removal actions when keys are held down
+   *
+   * @param timestamp - Current animation timestamp
+   * @private
+   */
+  private handleContinuousFishActions(timestamp: number): void {
+    // Process Add Fish (Enter key)
+    if (this.keysPressed['Enter']) {
+      this.processFishAction(timestamp, 'Enter', true);
+    }
+    // Process Remove Fish (Delete or Backspace key)
+    else if (this.keysPressed['Delete'] || this.keysPressed['Backspace']) {
+      this.processFishAction(timestamp, this.keysPressed['Delete'] ? 'Delete' : 'Backspace', false);
+    }
+  }
+
+  /**
+   * Process a fish addition or removal action with exponential rate scaling
+   *
+   * @param timestamp - Current animation timestamp
+   * @param key - The key being processed
+   * @param isAddingFish - Whether we're adding (true) or removing (false) fish
+   * @private
+   */
+  private processFishAction(timestamp: number, key: string, isAddingFish: boolean): void {
+    // Calculate time since last action
+    const timeSinceLastAction = timestamp - this.lastFishActionTime;
+
+    // Calculate how long the key has been held
+    const keyHoldDuration = (timestamp - this.keyPressStartTimes[key]) / 1000; // in seconds
+
+    // Calculate exponential rate based on hold duration
+    // Use a function that starts at baseFishActionRate and approaches maxFishActionRate
+    // exp(-duration) approaches 0 as duration increases
+    // 1 - exp(-duration) approaches 1 as duration increases
+    const exponentialFactor = 1 - Math.exp(-keyHoldDuration * 0.5); // 0.5 controls the steepness
+    const currentRate =
+      this.baseFishActionRate +
+      (this.maxFishActionRate - this.baseFishActionRate) * exponentialFactor;
+
+    // Calculate how many fish to add/remove in this frame
+    const actionInterval = 1000 / currentRate; // ms between actions
+
+    // Check if it's time for an action
+    if (timeSinceLastAction >= actionInterval) {
+      // Calculate how many fish to add/remove (allows for multiple fish when rate is high)
+      const count = Math.max(1, Math.floor(timeSinceLastAction / actionInterval));
+
+      // For manual control with keyboard, don't enforce MIN_FISH/MAX_FISH limits
+      // Just ensure we don't try to remove more fish than exist
+      const effectiveCount = isAddingFish
+        ? count // No upper limit when adding fish with keyboard
+        : Math.min(count, this.world.creatures.length); // Can't remove more fish than exist
+
+      if (effectiveCount > 0) {
+        if (isAddingFish) {
+          this.addFish(effectiveCount);
+          logger.debug(
+            `Added ${effectiveCount} fish at rate ${currentRate.toFixed(1)}/sec, total: ${this.world.creatures.length}`
+          );
+        } else {
+          for (let i = 0; i < effectiveCount; i++) {
+            this.removeRandomFish();
+          }
+          logger.debug(
+            `Removed ${effectiveCount} fish at rate ${currentRate.toFixed(1)}/sec, remaining: ${this.world.creatures.length}`
+          );
+        }
+
+        this.lastFishActionTime = timestamp;
+      }
+    }
+  }
+
+  // Method to remove a random fish
+  private removeRandomFish(): void {
+    if (this.world.creatures.length > 0) {
+      // Pick a random fish to remove
+      const randomIndex = Math.floor(Math.random() * this.world.creatures.length);
+      this.world.creatures.splice(randomIndex, 1);
+      logger.info(
+        `Removed fish at index ${randomIndex}, remaining: ${this.world.creatures.length}`
+      );
+    } else {
+      logger.info(`Cannot remove fish: no fish remaining`);
+    }
   }
 
   /**
