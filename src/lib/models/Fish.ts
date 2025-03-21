@@ -175,7 +175,6 @@ export class Fish {
 
     const bounceMultiplier = 0.5; // Controls strength of bounce effect
     let needsBounce = false;
-    const bounceFactor = 0;
 
     // Check for fish at or just beyond boundaries
     if (this.location.x <= SIMULATION.BOUNDARY_DISTANCE) {
