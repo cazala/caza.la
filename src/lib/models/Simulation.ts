@@ -114,6 +114,7 @@ export class Simulation {
       // Try to use OffscreenCanvas for better performance
       this.offscreenCanvas = new OffscreenCanvas(this.canvas.width, this.canvas.height);
     } catch (e) {
+      console.warn('OffscreenCanvas is not supported, falling back to regular canvas', e);
       // Fall back to regular canvas if OffscreenCanvas is not supported
       this.offscreenCanvas = document.createElement('canvas');
       this.offscreenCanvas.width = this.canvas.width;
