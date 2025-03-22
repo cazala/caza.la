@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import FishCanvas from './components/Canvas';
 import './App.css';
-import { logger } from './lib/utils/logging';
+import { logger } from './utils/logging';
 
 function App() {
   const [showText, setShowText] = useState(true);

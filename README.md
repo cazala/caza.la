@@ -45,7 +45,6 @@ All code must pass linting and formatting checks before it can be committed.
 - `/src` - Source code
   - `/components` - React components
   - `/lib` - Core simulation logic
-  - `/hooks` - React hooks
   - `/utils` - Utility functions
 - `/public` - Static assets
 - `/dist` - Production build output (generated)
