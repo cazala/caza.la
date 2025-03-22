@@ -1,4 +1,4 @@
-import { Vector } from '../models/Vector';
+import { Vector } from '../lib/Vector';
 import { logger } from './logging';
 
 /**

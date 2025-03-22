@@ -1,4 +1,4 @@
-import { Fish } from '../models/Fish';
+import { Fish } from '../lib/Fish';
 
 /**
  * Categorizes fish into groups based on their mass relative to a reference fish

@@ -1,4 +1,4 @@
-import { Fish } from '../models/Fish';
+import { Fish } from '../lib/Fish';
 import { CANVAS } from './constants';
 
 /**
