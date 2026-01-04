@@ -6,169 +6,18 @@ import {
   Engine,
   Environment,
   Fluids,
-  Grab,
   Interaction,
-  Joints,
-  Lines,
   Particles,
-  Sensors,
   Spawner,
-  Trails,
-  type GravityDirection,
   type IParticle,
-  type SensorBehavior,
-  type VelocityDirection,
 } from '@cazala/party';
-import { logger } from '../utils/logging';
 
-type PartySession = {
-  id: string;
-  name: string;
-  metadata: {
-    particleCount: number;
-    createdAt: string;
-    lastModified: string;
-    hasParticleData: boolean;
-  };
-  modules: {
-    environment: {
-      enabled: boolean;
-      gravityStrength: number;
-      dirX: number;
-      dirY: number;
-      inertia: number;
-      friction: number;
-      damping: number;
-      mode: GravityDirection;
-    };
-    boundary: {
-      enabled: boolean;
-      restitution: number;
-      friction: number;
-      mode: 'bounce' | 'warp' | 'kill' | 'none';
-      repelDistance: number;
-      repelStrength: number;
-    };
-    collisions: {
-      enabled: boolean;
-      restitution: number;
-    };
-    fluids: {
-      enabled: boolean;
-      influenceRadius: number;
-      targetDensity: number;
-      pressureMultiplier: number;
-      viscosity: number;
-      nearPressureMultiplier: number;
-      nearThreshold: number;
-      enableNearPressure: boolean;
-      maxAcceleration: number;
-    };
-    behavior: {
-      enabled: boolean;
-      wander: number;
-      cohesion: number;
-      alignment: number;
-      repulsion: number;
-      chase: number;
-      avoid: number;
-      separation: number;
-      viewRadius: number;
-      viewAngle: number;
-    };
-    sensors: {
-      enabled: boolean;
-      sensorDistance: number;
-      sensorAngle: number;
-      sensorRadius: number;
-      sensorThreshold: number;
-      sensorStrength: number;
-      followValue: SensorBehavior;
-      fleeValue: SensorBehavior;
-      colorSimilarityThreshold: number;
-      fleeAngle: number;
-    };
-    trails: {
-      enabled: boolean;
-      trailDecay: number;
-      trailDiffuse: number;
-    };
-    interaction: {
-      enabled: boolean;
-      mode: 'attract' | 'repel';
-      strength: number;
-      radius: number;
-    };
-    particles: {
-      enabled: boolean;
-      colorType: number;
-      customColor: { r: number; g: number; b: number; a: number };
-      hue: number;
-    };
-    joints: {
-      enabled: boolean;
-      enableParticleCollisions: boolean;
-      enableJointCollisions: boolean;
-      list: Array<{ aIndex: number; bIndex: number; restLength: number }>;
-      momentum: number;
-      restitution: number;
-      separation: number;
-      steps: number;
-      friction: number;
-    };
-    lines: {
-      enabled: boolean;
-      list: Array<{ aIndex: number; bIndex: number }>;
-      lineWidth: number;
-      lineColor: { r: number; g: number; b: number; a: number } | null;
-    };
-    grab: {
-      enabled: boolean;
-      grabbedIndex: number;
-      positionX: number;
-      positionY: number;
-    };
-  };
-  init: {
-    numParticles: number;
-    shape: 'grid' | 'random' | 'circle' | 'donut' | 'square';
-    spacing: number;
-    particleSize: number;
-    particleMass: number;
-    radius: number;
-    innerRadius: number;
-    squareSize: number;
-    cornerRadius: number;
-    colors: string[];
-    velocityConfig: {
-      speed: number;
-      direction: VelocityDirection;
-      angle: number;
-    };
-    gridJoints: boolean;
-    hasInitialSpawned: boolean;
-    isSpawnLocked: boolean;
-  };
-  engine: {
-    constrainIterations: number;
-    gridCellSize: number;
-    maxNeighbors: number;
-    camera: { x: number; y: number };
-    zoom: number;
-  };
-  render: {
-    invertColors: boolean;
-  };
-  oscillators: Record<string, unknown>;
-  oscillatorsElapsedSeconds: number;
-};
+const sleep = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 
-const FishCanvas: React.FC = () => {
+const Canvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
-  const engineReadyRef = useRef(false);
   const interactionRef = useRef<Interaction | null>(null);
-  const grabRef = useRef<Grab | null>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -176,27 +25,23 @@ const FishCanvas: React.FC = () => {
   // Track DPR changes
   const [dpr, setDpr] = useState(window.devicePixelRatio || 1);
   const spawner = useMemo(() => new Spawner(), []);
-  const isSafari = useMemo(() => {
-    // iOS Safari UAs include "Safari" and "Mobile" (and not "CriOS"/"FxiOS").
-    // macOS Safari includes "Safari" and not "Chrome".
-    const ua = navigator.userAgent;
-    const isWebKitSafari =
-      /Safari\//.test(ua) && !/Chrome\//.test(ua) && !/CriOS\//.test(ua) && !/FxiOS\//.test(ua);
-    return isWebKitSafari;
+  const isMobile = useMemo(() => {
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   }, []);
 
-  const sleep = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
-  const getCanvasPixelSize = useCallback(
-    (canvas: HTMLCanvasElement) => {
-      const rect = canvas.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-      return {
-        pixelW: Math.max(1, Math.floor((rect.width || dimensions.width) * ratio)),
-        pixelH: Math.max(1, Math.floor((rect.height || dimensions.height) * ratio)),
-      };
-    },
-    [dimensions.width, dimensions.height]
-  );
+  const getCanvasPixelSize = useCallback((canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+
+    // Fallback for early-mount scenarios where rect may still be 0x0.
+    const fallbackW = rect.width || window.innerWidth || 1;
+    const fallbackH = rect.height || window.innerHeight || 1;
+
+    return {
+      pixelW: Math.max(1, Math.floor(fallbackW * ratio)),
+      pixelH: Math.max(1, Math.floor(fallbackH * ratio)),
+    };
+  }, []);
 
   // Handle window resize and display changes
   useEffect(() => {
@@ -207,7 +52,6 @@ const FishCanvas: React.FC = () => {
       const safeWidth = Math.min(window.innerWidth, document.documentElement.clientWidth);
       const safeHeight = Math.min(window.innerHeight, document.documentElement.clientHeight);
 
-      logger.debug(`Safe viewport dimensions: ${safeWidth}x${safeHeight}`);
       return { width: safeWidth, height: safeHeight };
     };
 
@@ -225,7 +69,6 @@ const FishCanvas: React.FC = () => {
 
     // Handle display changes that might affect DPR
     const handleDisplayChange = () => {
-      logger.info('Display properties changed, updating canvas');
       const currentDpr = window.devicePixelRatio || 1;
       if (currentDpr !== dpr) {
         setDpr(currentDpr);
@@ -246,256 +89,136 @@ const FishCanvas: React.FC = () => {
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
-      try {
-        mediaQueryList.removeEventListener('change', handleDisplayChange);
-      } catch (e) {
-        logger.warn('Could not remove display change listener', e);
-      }
+      mediaQueryList.removeEventListener('change', handleDisplayChange);
     };
   }, [dpr]);
 
-  const applyPartySession = async (
-    engine: Engine,
-    session: PartySession,
-    canvas: HTMLCanvasElement
-  ) => {
-    const sessionEngine = session.engine;
-    const sessionInit = session.init;
+  const runDemo = useCallback(
+    async (canvas: HTMLCanvasElement, _isMobile: boolean = false) => {
+      const environment = new Environment({
+        enabled: false,
+        gravityStrength: 3000,
+        gravityDirection: 'down',
+      });
 
-    // Engine + view
-    if (typeof sessionEngine.constrainIterations === 'number') {
-      engine.setConstrainIterations(sessionEngine.constrainIterations);
-    }
-    if (typeof sessionEngine.gridCellSize === 'number') {
-      engine.setCellSize(sessionEngine.gridCellSize);
-    }
-    if (typeof sessionEngine.maxNeighbors === 'number') {
-      engine.setMaxNeighbors(sessionEngine.maxNeighbors);
-    }
+      const boundary = new Boundary({
+        enabled: true,
+        restitution: 0.9,
+        friction: 0.1,
+        mode: 'bounce',
+      });
 
-    const camX = typeof sessionEngine.camera?.x === 'number' ? sessionEngine.camera.x : 0;
-    const camY = typeof sessionEngine.camera?.y === 'number' ? sessionEngine.camera.y : 0;
-    const zoom = typeof sessionEngine.zoom === 'number' ? sessionEngine.zoom : 1;
+      const collisions = new Collisions({
+        enabled: true,
+        restitution: 0.8,
+      });
 
-    engine.setCamera(camX, camY);
-    engine.setZoom(zoom);
+      const fluids = new Fluids({
+        enabled: true,
+        influenceRadius: 46,
+        targetDensity: 10,
+        pressureMultiplier: 100,
+        viscosity: 4,
+        nearPressureMultiplier: 39,
+        nearThreshold: 20,
+        enableNearPressure: true,
+        maxAcceleration: 38,
+      });
 
-    // Particles
-    const count =
-      typeof sessionInit.numParticles === 'number'
-        ? sessionInit.numParticles
-        : session.metadata.particleCount;
+      const behavior = new Behavior({
+        enabled: true,
+        wander: 20,
+        cohesion: 1.5,
+        alignment: 1.5,
+        repulsion: 2,
+        chase: 0,
+        avoid: 0,
+        separation: 10,
+        viewRadius: 100,
+        viewAngle: 4.71238898038469,
+      });
 
-    const shape = sessionInit.shape;
-    const spacing = sessionInit.spacing;
-    const radius = sessionInit.radius;
-    const innerRadius = sessionInit.innerRadius;
-    const squareSize = sessionInit.squareSize;
-    const cornerRadius = sessionInit.cornerRadius;
-    const size = sessionInit.particleSize;
-    const mass = sessionInit.particleMass;
-    const colors = sessionInit.colors;
+      const interaction = new Interaction({
+        enabled: true,
+        mode: 'attract',
+        strength: 10000,
+        radius: 700,
+      });
 
-    const velocityConfig = sessionInit.velocityConfig;
-    const velocity = {
-      speed: velocityConfig.speed,
-      direction: velocityConfig.direction,
-      angle: velocityConfig.angle,
-    };
+      const particle = new Particles({
+        enabled: true,
+        colorType: 2,
+        hue: 1,
+      });
 
-    const particles: IParticle[] =
-      count > 0
-        ? spawner.initParticles({
-            count,
-            shape,
-            center: { x: camX, y: camY },
-            spacing,
-            radius,
-            innerRadius,
-            squareSize,
-            cornerRadius,
-            size,
-            mass,
-            colors,
-            velocity,
-            bounds: { width: canvas.width, height: canvas.height },
-          })
-        : [];
+      const engine = new Engine({
+        canvas,
+        runtime: 'auto',
+        forces: [environment, boundary, collisions, fluids, behavior, interaction],
+        render: [particle],
+      });
 
-    engine.setParticles(particles);
-    engine.addOscillator({
-      moduleName: 'particles',
-      inputName: 'hue',
-      min: 0,
-      max: 1,
-      speedHz: 0.01,
-    });
-    engine.addOscillatorListener('particles', 'hue', (value: number) => {
-      // Set the hue for the text color
-      const hello = document.querySelector('.text') as HTMLElement | null;
-      if (hello) {
-        hello.style.color = `hsl(${value * 360}deg, 100%, 50%)`;
-      }
-    });
-    engine.setOscillatorsElapsedSeconds(session.oscillatorsElapsedSeconds);
-  };
+      await engine.initialize();
 
-  const buildPartyEngineFromSession = (
-    canvas: HTMLCanvasElement,
-    session: PartySession,
-    runtime: 'auto' | 'cpu' | 'webgpu'
-  ) => {
-    const m = session.modules;
+      engine.setConstrainIterations(20);
+      engine.setCellSize(16);
+      engine.setMaxNeighbors(1000);
+      engine.setCamera(0, 0);
+      engine.setZoom(0.340854657732216);
 
-    const environmentCfg = m.environment;
-    const environmentMode = environmentCfg.mode;
-    const gravityDirection =
-      typeof environmentMode === 'string' ? (environmentMode as GravityDirection) : undefined;
+      // Particles
+      const count = 10000;
+      const shape = 'circle';
+      const spacing = 12;
+      const radius = 600;
+      const innerRadius = 500;
+      const squareSize = 200;
+      const cornerRadius = 0;
+      const size = 5;
+      const mass = 0.25;
 
-    const environment = new Environment({
-      enabled: !!environmentCfg.enabled,
-      gravityStrength: environmentCfg.gravityStrength,
-      dirX: environmentCfg.dirX,
-      dirY: environmentCfg.dirY,
-      inertia: environmentCfg.inertia,
-      friction: environmentCfg.friction,
-      damping: environmentCfg.damping,
-      gravityDirection,
-    });
+      const particles: IParticle[] = spawner.initParticles({
+        count,
+        shape,
+        center: { x: 0, y: 0 },
+        spacing,
+        radius,
+        innerRadius,
+        squareSize,
+        cornerRadius,
+        size,
+        mass,
+        colors: [],
+        velocity: {
+          speed: 0,
+          direction: 'random',
+          angle: 0,
+        },
+        bounds: { width: canvas.width, height: canvas.height },
+      });
 
-    const boundaryCfg = m.boundary;
-    const boundary = new Boundary({
-      enabled: !!boundaryCfg.enabled,
-      restitution: boundaryCfg.restitution,
-      friction: boundaryCfg.friction,
-      mode: boundaryCfg.mode,
-      repelDistance: boundaryCfg.repelDistance,
-      repelStrength: boundaryCfg.repelStrength,
-    });
+      engine.setParticles(particles);
+      engine.addOscillator({
+        moduleName: 'particles',
+        inputName: 'hue',
+        min: 0,
+        max: 1,
+        speedHz: 0.01,
+      });
+      engine.addOscillatorListener('particles', 'hue', (value: number) => {
+        // Set the hue for the text color
+        const text = document.querySelector('.text') as HTMLElement | null;
+        if (text) {
+          text.style.color = `hsl(${value * 360}deg, 100%, 50%)`;
+        }
+      });
 
-    const collisionsCfg = m.collisions;
-    const collisions = new Collisions({
-      enabled: !!collisionsCfg.enabled,
-      restitution: collisionsCfg.restitution,
-    });
+      engine.play();
 
-    const fluidsCfg = m.fluids;
-    const fluids = new Fluids({
-      enabled: !!fluidsCfg.enabled,
-      influenceRadius: fluidsCfg.influenceRadius,
-      targetDensity: fluidsCfg.targetDensity,
-      pressureMultiplier: fluidsCfg.pressureMultiplier,
-      viscosity: fluidsCfg.viscosity,
-      nearPressureMultiplier: fluidsCfg.nearPressureMultiplier,
-      nearThreshold: fluidsCfg.nearThreshold,
-      enableNearPressure: fluidsCfg.enableNearPressure,
-      maxAcceleration: fluidsCfg.maxAcceleration,
-    });
-
-    const behaviorCfg = m.behavior;
-    const behavior = new Behavior({
-      enabled: !!behaviorCfg.enabled,
-      wander: behaviorCfg.wander,
-      cohesion: behaviorCfg.cohesion,
-      alignment: behaviorCfg.alignment,
-      repulsion: behaviorCfg.repulsion,
-      chase: behaviorCfg.chase,
-      avoid: behaviorCfg.avoid,
-      separation: behaviorCfg.separation,
-      viewRadius: behaviorCfg.viewRadius,
-      viewAngle: behaviorCfg.viewAngle,
-    });
-
-    const sensorsCfg = m.sensors;
-    const sensors = new Sensors({
-      enabled: !!sensorsCfg.enabled,
-      sensorDistance: sensorsCfg.sensorDistance,
-      sensorAngle: sensorsCfg.sensorAngle,
-      sensorRadius: sensorsCfg.sensorRadius,
-      sensorThreshold: sensorsCfg.sensorThreshold,
-      sensorStrength: sensorsCfg.sensorStrength,
-      colorSimilarityThreshold: sensorsCfg.colorSimilarityThreshold,
-      followBehavior: sensorsCfg.followValue,
-      fleeBehavior: sensorsCfg.fleeValue,
-      fleeAngle: sensorsCfg.fleeAngle,
-    });
-
-    const interactionCfg = m.interaction;
-    const interaction = new Interaction({
-      enabled: !!interactionCfg.enabled,
-      mode: interactionCfg.mode,
-      strength: interactionCfg.strength,
-      radius: interactionCfg.radius,
-      active: false,
-      action: 'click',
-      position: { x: 0, y: 0 },
-    });
-
-    const jointsCfg = m.joints;
-    const joints = new Joints({
-      enabled: !!jointsCfg.enabled,
-      joints: jointsCfg.list,
-      enableParticleCollisions: jointsCfg.enableParticleCollisions,
-      enableJointCollisions: jointsCfg.enableJointCollisions,
-      momentum: jointsCfg.momentum,
-      restitution: jointsCfg.restitution,
-      separation: jointsCfg.separation,
-      steps: jointsCfg.steps,
-      friction: jointsCfg.friction,
-    });
-
-    const grabCfg = m.grab;
-    const grab = new Grab({
-      enabled: !!grabCfg.enabled,
-      grabbedIndex: grabCfg.grabbedIndex,
-      positionX: grabCfg.positionX,
-      positionY: grabCfg.positionY,
-    });
-
-    const trailsCfg = m.trails;
-    const trails = new Trails({
-      enabled: !!trailsCfg.enabled,
-      trailDecay: trailsCfg.trailDecay,
-      trailDiffuse: trailsCfg.trailDiffuse,
-    });
-
-    const particlesCfg = m.particles;
-    const particlesModule = new Particles({
-      enabled: !!particlesCfg.enabled,
-      colorType: particlesCfg.colorType,
-      customColor: particlesCfg.customColor,
-      hue: particlesCfg.hue,
-    });
-
-    const linesCfg = m.lines;
-    const lines = new Lines({
-      enabled: !!linesCfg.enabled,
-      lines: linesCfg.list,
-      lineWidth: linesCfg.lineWidth,
-    });
-    lines.setLineColor(linesCfg.lineColor);
-
-    interactionRef.current = interaction;
-    grabRef.current = grab;
-
-    return new Engine({
-      canvas,
-      runtime,
-      forces: [
-        environment,
-        boundary,
-        collisions,
-        fluids,
-        behavior,
-        sensors,
-        interaction,
-        joints,
-        grab,
-      ],
-      render: [trails, lines, particlesModule],
-      maxParticles: session.init.numParticles,
-    });
-  };
+      return { engine, interaction };
+    },
+    [spawner]
+  );
 
   const screenToWorld = (engine: Engine, screenX: number, screenY: number) => {
     const { width, height } = engine.getSize();
@@ -509,17 +232,12 @@ const FishCanvas: React.FC = () => {
 
   // Initialize Party engine and load demo6 session on mount
   useEffect(() => {
-    let cancelled = false;
-
     const start = async () => {
       if (!canvasRef.current) {
-        logger.error('Canvas element not found');
         return;
       }
 
       const canvas = canvasRef.current;
-      logger.info('Canvas element found, initializing Party engine');
-      engineReadyRef.current = false;
 
       // Safari/WebGPU stability: ensure canvas is mounted, has explicit size attrs, and layout settled.
       if (!canvas.isConnected || !canvas.parentElement) {
@@ -527,75 +245,33 @@ const FishCanvas: React.FC = () => {
         if (!canvasRef.current || !canvasRef.current.isConnected) return;
       }
 
-      canvas.style.width = `${dimensions.width}px`;
-      canvas.style.height = `${dimensions.height}px`;
+      // Use live viewport sizing here to avoid coupling initialization to `dimensions`.
+      // Resizing after init is handled in a separate effect.
+      const safeWidth = Math.min(window.innerWidth, document.documentElement.clientWidth);
+      const safeHeight = Math.min(window.innerHeight, document.documentElement.clientHeight);
+      canvas.style.width = `${safeWidth}px`;
+      canvas.style.height = `${safeHeight}px`;
 
       // Critical for Safari WebGPU: width/height attributes must be set BEFORE engine.initialize()
       const { pixelW, pixelH } = getCanvasPixelSize(canvas);
       canvas.width = pixelW;
       canvas.height = pixelH;
 
-      // Load the session JSON from src on page load
-      const sessionUrl = new URL('../demo6.json', import.meta.url);
-      const session = (await fetch(sessionUrl).then(r => r.json())) as PartySession;
-
-      // Serialize teardown/setup (React StrictMode dev mounts can overlap)
-
-      const preferredRuntime: 'webgpu' | 'auto' = isSafari ? 'webgpu' : 'auto';
-
-      const tryStartWithRuntime = async (runtime: 'webgpu' | 'auto' | 'cpu') => {
-        const engine = buildPartyEngineFromSession(canvas, session, runtime);
-        engineRef.current = engine;
-        engineReadyRef.current = false;
-
-        // Mandatory: yield frames so Safari has a settled layout and WebGPU has a configured canvas.
-
-        await engine.initialize();
-        engineReadyRef.current = true;
-
-        // Size in device pixels. Let the engine own backing store updates (important for WebGPU).
-
-        await applyPartySession(engine, session, canvas);
-
-        if (!cancelled) {
-          engine.play();
-          logger.info(
-            `Party engine initialized (${engine.getActualRuntime()}) and demo6 session loaded`
-          );
-        }
-      };
-
-      try {
-        await tryStartWithRuntime(preferredRuntime);
-      } catch (error) {
-        logger.error(`Error initializing Party engine with runtime=${preferredRuntime}:`, error);
-
-        // Fallback for Safari/WebGPU instability: if WebGPU fails, restart on CPU so the page stays alive.
-        if (!cancelled && preferredRuntime === 'webgpu') {
-          try {
-            await tryStartWithRuntime('cpu');
-          } catch (cpuError) {
-            logger.error('Error initializing Party engine with CPU fallback:', cpuError);
-          }
-        }
-      }
+      const { engine, interaction } = await runDemo(canvas, isMobile);
+      engineRef.current = engine;
+      interactionRef.current = interaction;
     };
 
     void start();
 
     return () => {
-      cancelled = true;
       if (engineRef.current) {
-        logger.info('Destroying Party engine on component unmount');
         engineRef.current = null;
-        engineReadyRef.current = false;
         interactionRef.current = null;
-        grabRef.current = null;
       }
     };
     // Only run once on mount. Resize is handled by a separate effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getCanvasPixelSize, isMobile, runDemo]);
 
   // Resize Party engine when viewport/DPR changes
   useEffect(() => {
@@ -609,7 +285,7 @@ const FishCanvas: React.FC = () => {
 
     const { pixelW, pixelH } = getCanvasPixelSize(canvas);
 
-    if (engine && engineReadyRef.current) {
+    if (engine) {
       engine.setSize(pixelW, pixelH);
     } else {
       // Pre-init sizing so CPU canvas has a sensible backing store.
@@ -639,7 +315,6 @@ const FishCanvas: React.FC = () => {
     document.addEventListener('click', handleClick);
 
     // Log to verify this effect is running
-    logger.info('Setting up keyboard focus handling');
 
     return () => {
       document.removeEventListener('click', handleClick);
@@ -659,7 +334,7 @@ const FishCanvas: React.FC = () => {
     const intervalId = window.setInterval(() => {
       const engine = getEngine();
       const interaction = getInteraction();
-      if (!engine || !interaction || !interaction.isEnabled() || !engineReadyRef.current) return;
+      if (!engine || !interaction || !interaction.isEnabled()) return;
 
       // "Center of screen" in world space is the current camera center.
       const { x: cx, y: cy } = engine.getCamera();
@@ -675,7 +350,7 @@ const FishCanvas: React.FC = () => {
       canvas.focus();
 
       const engine = getEngine();
-      if (!engine || !engineReadyRef.current) return;
+      if (!engine) return;
       const rect = canvas.getBoundingClientRect();
       const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
       const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
@@ -757,4 +432,4 @@ const FishCanvas: React.FC = () => {
   );
 };
 
-export default FishCanvas;
+export default Canvas;

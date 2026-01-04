@@ -1,4 +1,4 @@
-import FishCanvas from './components/Canvas';
+import Canvas from './components/Canvas';
 import './App.css';
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
       tabIndex={-1} // Make sure it doesn't take focus from canvas
     >
       {/* The FishCanvas should always be rendered */}
-      <FishCanvas />
+      <Canvas />
       <div className="text">
         <p>
           <b className="hello">Hello World.</b>
