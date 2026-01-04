@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "vite",
+    "start": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
@@ -18,6 +18,7 @@
     ]
   },
   "dependencies": {
+    "@cazala/party": "^0.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
