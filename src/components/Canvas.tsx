@@ -9,10 +9,7 @@ import {
   Interaction,
   Particles,
   Spawner,
-  type IParticle,
 } from '@cazala/party';
-
-const sleep = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 
 const Canvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,9 +19,6 @@ const Canvas: React.FC = () => {
     width: window.innerWidth,
     height: window.innerHeight,
   });
-  // Track DPR changes
-  const [dpr, setDpr] = useState(window.devicePixelRatio || 1);
-  const spawner = useMemo(() => new Spawner(), []);
   const isMobile = useMemo(() => {
     return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   }, []);
@@ -59,21 +53,6 @@ const Canvas: React.FC = () => {
       // Get safe dimensions that account for browser UI
       const safeDimensions = getSafeViewportDimensions();
       setDimensions(safeDimensions);
-
-      // Check if DPR has changed
-      const currentDpr = window.devicePixelRatio || 1;
-      if (currentDpr !== dpr) {
-        setDpr(currentDpr);
-      }
-    };
-
-    // Handle display changes that might affect DPR
-    const handleDisplayChange = () => {
-      const currentDpr = window.devicePixelRatio || 1;
-      if (currentDpr !== dpr) {
-        setDpr(currentDpr);
-      }
-      // Party engine will handle size changes; we just update DPR state.
     };
 
     // Initial resize to ensure correct size
@@ -82,143 +61,135 @@ const Canvas: React.FC = () => {
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
 
-    // Listen for display changes, zoom level changes, etc.
-    const mediaQueryList = window.matchMedia('(resolution: 1dppx)');
-    mediaQueryList.addEventListener('change', handleDisplayChange);
-
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
-      mediaQueryList.removeEventListener('change', handleDisplayChange);
     };
-  }, [dpr]);
+  }, []);
 
-  const runDemo = useCallback(
-    async (canvas: HTMLCanvasElement, _isMobile: boolean = false) => {
-      const environment = new Environment({
-        enabled: false,
-        gravityStrength: 3000,
-        gravityDirection: 'down',
-      });
+  const runDemo = useCallback(async (canvas: HTMLCanvasElement, isMobile: boolean = false) => {
+    const environment = new Environment({
+      enabled: false,
+      gravityStrength: 3000,
+      gravityDirection: 'down',
+    });
 
-      const boundary = new Boundary({
-        enabled: true,
-        restitution: 0.9,
-        friction: 0.1,
-        mode: 'bounce',
-      });
+    const boundary = new Boundary({
+      enabled: true,
+      restitution: 0.9,
+      friction: 0.1,
+      mode: 'bounce',
+    });
 
-      const collisions = new Collisions({
-        enabled: true,
-        restitution: 0.8,
-      });
+    const collisions = new Collisions({
+      enabled: true,
+      restitution: 0.8,
+    });
 
-      const fluids = new Fluids({
-        enabled: true,
-        influenceRadius: 46,
-        targetDensity: 10,
-        pressureMultiplier: 100,
-        viscosity: 4,
-        nearPressureMultiplier: 39,
-        nearThreshold: 20,
-        enableNearPressure: true,
-        maxAcceleration: 38,
-      });
+    const fluids = new Fluids({
+      enabled: true,
+      influenceRadius: 50,
+      targetDensity: 10,
+      pressureMultiplier: 100,
+      viscosity: 4,
+      nearPressureMultiplier: 39,
+      nearThreshold: 20,
+      enableNearPressure: true,
+      maxAcceleration: 38,
+    });
 
-      const behavior = new Behavior({
-        enabled: true,
-        wander: 20,
-        cohesion: 1.5,
-        alignment: 1.5,
-        repulsion: 2,
-        chase: 0,
-        avoid: 0,
-        separation: 10,
-        viewRadius: 100,
-        viewAngle: 4.71238898038469,
-      });
+    const behavior = new Behavior({
+      enabled: true,
+      wander: 20,
+      cohesion: 1.5,
+      alignment: 1.5,
+      repulsion: 2,
+      separation: 10,
+      viewRadius: 100,
+      viewAngle: 3.14,
+    });
 
-      const interaction = new Interaction({
-        enabled: true,
-        mode: 'attract',
-        strength: 10000,
-        radius: 700,
-      });
+    const interaction = new Interaction({
+      enabled: true,
+      mode: 'attract',
+      strength: 10000,
+      radius: 700,
+    });
 
-      const particle = new Particles({
-        enabled: true,
-        colorType: 2,
-        hue: 1,
-      });
+    const particle = new Particles({
+      enabled: true,
+      colorType: 2,
+      hue: 1,
+    });
 
-      const engine = new Engine({
-        canvas,
-        runtime: 'auto',
-        forces: [environment, boundary, collisions, fluids, behavior, interaction],
-        render: [particle],
-      });
+    const engine = new Engine({
+      canvas,
+      runtime: 'auto',
+      forces: [environment, boundary, collisions, fluids, behavior, interaction],
+      render: [particle],
+    });
 
-      await engine.initialize();
+    await engine.initialize();
 
-      engine.setConstrainIterations(20);
-      engine.setCellSize(16);
-      engine.setMaxNeighbors(1000);
-      engine.setCamera(0, 0);
-      engine.setZoom(0.340854657732216);
+    engine.setConstrainIterations(20);
+    engine.setCellSize(16);
+    engine.setMaxNeighbors(1000);
+    engine.setCamera(0, 0);
+    engine.setZoom(0.340854657732216);
 
-      // Particles
-      const count = 10000;
-      const shape = 'circle';
-      const spacing = 12;
-      const radius = 600;
-      const innerRadius = 500;
-      const squareSize = 200;
-      const cornerRadius = 0;
-      const size = 5;
-      const mass = 0.25;
+    const isGpu = engine.getActualRuntime() === 'webgpu';
 
-      const particles: IParticle[] = spawner.initParticles({
-        count,
-        shape,
-        center: { x: 0, y: 0 },
-        spacing,
-        radius,
-        innerRadius,
-        squareSize,
-        cornerRadius,
-        size,
-        mass,
-        colors: [],
-        velocity: {
-          speed: 0,
-          direction: 'random',
-          angle: 0,
-        },
-        bounds: { width: canvas.width, height: canvas.height },
-      });
+    const spawner = new Spawner();
 
-      engine.setParticles(particles);
-      engine.addOscillator({
-        moduleName: 'particles',
-        inputName: 'hue',
-        min: 0,
-        max: 1,
-        speedHz: 0.01,
-      });
-      engine.addOscillatorListener('particles', 'hue', (value: number) => {
-        // Set the hue for the text color
-        const text = document.querySelector('.text') as HTMLElement | null;
-        if (text) {
-          text.style.color = `hsl(${value * 360}deg, 100%, 50%)`;
-        }
-      });
+    if (isGpu) {
+      engine.setParticles(
+        spawner.initParticles({
+          count: isMobile ? 10000 : 25000,
+          shape: 'circle',
+          center: { x: 0, y: 0 },
+          radius: 600,
+          mass: 0.25,
+          size: 5,
+        })
+      );
+    } else {
+      engine.setParticles(
+        spawner.initParticles({
+          count: 200,
+          shape: 'grid',
+          spacing: 110,
+          center: { x: 0, y: 2000 },
+          mass: 0.5,
+          size: 50,
+        })
+      );
+    }
 
-      engine.play();
+    engine.addOscillator({
+      moduleName: 'particles',
+      inputName: 'hue',
+      min: 0,
+      max: 1,
+      speedHz: 0.01,
+    });
+    engine.addOscillatorListener('particles', 'hue', (value: number) => {
+      // Set the hue for the text color
+      const text = document.querySelector('.text') as HTMLElement | null;
+      if (text) {
+        text.style.color = `hsl(${value * 360}deg, 100%, 50%)`;
+      }
+    });
 
-      return { engine, interaction };
-    },
-    [spawner]
-  );
+    if (!isGpu) {
+      fluids.setEnabled(false);
+      behavior.setEnabled(false);
+      environment.setEnabled(true);
+    }
+
+    engine.play();
+
+    return { engine, interaction };
+  }, []);
 
   const screenToWorld = (engine: Engine, screenX: number, screenY: number) => {
     const { width, height } = engine.getSize();
@@ -239,24 +210,6 @@ const Canvas: React.FC = () => {
 
       const canvas = canvasRef.current;
 
-      // Safari/WebGPU stability: ensure canvas is mounted, has explicit size attrs, and layout settled.
-      if (!canvas.isConnected || !canvas.parentElement) {
-        await sleep(100);
-        if (!canvasRef.current || !canvasRef.current.isConnected) return;
-      }
-
-      // Use live viewport sizing here to avoid coupling initialization to `dimensions`.
-      // Resizing after init is handled in a separate effect.
-      const safeWidth = Math.min(window.innerWidth, document.documentElement.clientWidth);
-      const safeHeight = Math.min(window.innerHeight, document.documentElement.clientHeight);
-      canvas.style.width = `${safeWidth}px`;
-      canvas.style.height = `${safeHeight}px`;
-
-      // Critical for Safari WebGPU: width/height attributes must be set BEFORE engine.initialize()
-      const { pixelW, pixelH } = getCanvasPixelSize(canvas);
-      canvas.width = pixelW;
-      canvas.height = pixelH;
-
       const { engine, interaction } = await runDemo(canvas, isMobile);
       engineRef.current = engine;
       interactionRef.current = interaction;
@@ -271,9 +224,9 @@ const Canvas: React.FC = () => {
       }
     };
     // Only run once on mount. Resize is handled by a separate effect.
-  }, [getCanvasPixelSize, isMobile, runDemo]);
+  }, [isMobile, runDemo]);
 
-  // Resize Party engine when viewport/DPR changes
+  // Resize Party engine when viewport changes
   useEffect(() => {
     const canvas = canvasRef.current;
     const engine = engineRef.current;
@@ -292,7 +245,7 @@ const Canvas: React.FC = () => {
       canvas.width = pixelW;
       canvas.height = pixelH;
     }
-  }, [dimensions, dpr, getCanvasPixelSize]);
+  }, [dimensions, getCanvasPixelSize]);
 
   // Add keyboard focus handling
   useEffect(() => {
@@ -334,7 +287,8 @@ const Canvas: React.FC = () => {
     const intervalId = window.setInterval(() => {
       const engine = getEngine();
       const interaction = getInteraction();
-      if (!engine || !interaction || !interaction.isEnabled()) return;
+      const isGpu = engine?.getActualRuntime() === 'webgpu';
+      if (!engine || !interaction || !interaction.isEnabled() || !isGpu) return;
 
       // "Center of screen" in world space is the current camera center.
       const { x: cx, y: cy } = engine.getCamera();
@@ -421,12 +375,6 @@ const Canvas: React.FC = () => {
         background: 'transparent',
         pointerEvents: 'auto',
         overflow: 'hidden', // Ensure no overflow
-        // Disable iOS text selection, magnifying glass and callout behavior
-        WebkitUserSelect: 'none',
-        userSelect: 'none',
-        WebkitTouchCallout: 'none',
-        WebkitTapHighlightColor: 'transparent',
-        touchAction: 'manipulation', // Optimizes for touch input, disables unnecessary browser behaviors
       }}
     />
   );
