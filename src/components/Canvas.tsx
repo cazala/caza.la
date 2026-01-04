@@ -337,7 +337,7 @@ const Canvas: React.FC = () => {
       interaction.setActive(true);
       interaction.setPosition(cx, cy);
       interaction.setStrength(200_000);
-      interaction.setRadius(isMobile ? 1400 : 1600);
+      interaction.setRadius(isMobile ? 1500 : 1600);
     }, 16);
 
     const onPointerDown = (e: PointerEvent) => {
