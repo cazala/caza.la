@@ -168,6 +168,7 @@ const FishCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
   const engineReadyRef = useRef(false);
+  const startupTokenRef = useRef(0);
   const interactionRef = useRef<Interaction | null>(null);
   const grabRef = useRef<Grab | null>(null);
   const destroyInFlightRef = useRef<Promise<void> | null>(null);
@@ -200,6 +201,67 @@ const FishCanvas: React.FC = () => {
     },
     [dimensions.width, dimensions.height]
   );
+
+  const debugParty = import.meta.env.DEV;
+  const logCanvasState = useCallback(
+    (label: string) => {
+      if (!debugParty) return;
+      const canvas = canvasRef.current;
+      const engine = engineRef.current;
+      if (!canvas) {
+        logger.info(`[PartyDebug] ${label}: canvas=null`);
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const cssW = (canvas.style && canvas.style.width) || '(inline none)';
+      const cssH = (canvas.style && canvas.style.height) || '(inline none)';
+      const dprNow = window.devicePixelRatio || 1;
+      const engineSize = engine ? engine.getSize() : null;
+      const runtime = engine ? engine.getActualRuntime() : null;
+      const fps = engine ? engine.getFPS() : null;
+      const count = engine ? engine.getCount() : null;
+
+      logger.info(
+        `[PartyDebug] ${label}: rect=${Math.round(rect.width)}x${Math.round(rect.height)} ` +
+          `canvas=${canvas.width}x${canvas.height} css=${cssW}x${cssH} dpr=${dprNow} ` +
+          `engineReady=${engineReadyRef.current} engineSize=${engineSize ? `${engineSize.width}x${engineSize.height}` : 'null'} ` +
+          `runtime=${runtime ?? 'null'} fps=${fps ?? 'null'} count=${count ?? 'null'} vis=${document.visibilityState}`
+      );
+    },
+    [debugParty]
+  );
+
+  const logSafeViewportDimensions = useCallback(
+    (label: string) => {
+      if (!debugParty) return;
+      const safeWidth = Math.min(window.innerWidth, document.documentElement.clientWidth);
+      const safeHeight = Math.min(window.innerHeight, document.documentElement.clientHeight);
+      logger.info(`[PartyDebug] ${label}: Safe viewport dimensions: ${safeWidth}x${safeHeight}`);
+    },
+    [debugParty]
+  );
+
+  const jiggleWebGPUCanvasSize = useCallback(
+    async (engine: Engine, canvas: HTMLCanvasElement, label: string) => {
+      if (!debugParty) return;
+      if (engine.getActualRuntime() !== 'webgpu') return;
+
+      const { pixelW, pixelH } = getCanvasPixelSize(canvas);
+      const jiggleH = Math.max(1, pixelH - 1);
+      if (jiggleH === pixelH) return;
+
+      logger.info(
+        `[PartyDebug] ${label}: jiggling size ${pixelW}x${pixelH} -> ${pixelW}x${jiggleH} -> ${pixelW}x${pixelH}`
+      );
+
+      engine.setSize(pixelW, jiggleH);
+      await nextFrame();
+      engine.setSize(pixelW, pixelH);
+      await nextFrame();
+      logCanvasState(`${label}: after jiggle`);
+    },
+    [debugParty, getCanvasPixelSize, logCanvasState]
+  );
   const waitForCanvasNonTinyRect = async (canvas: HTMLCanvasElement) => {
     // Safari/WebGPU: canvas can report 0x0 during early layout; wait a few frames.
     let attempts = 0;
@@ -210,6 +272,29 @@ const FishCanvas: React.FC = () => {
       attempts++;
     }
   };
+
+  // Drive sizing from actual layout (helps Safari where first "real" size lands after initial effects).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ro = new ResizeObserver(() => {
+      const { pixelW, pixelH } = getCanvasPixelSize(canvas);
+      const engine = engineRef.current;
+      if (engine && engineReadyRef.current) {
+        engine.setSize(pixelW, pixelH);
+        logCanvasState(`ResizeObserver -> engine.setSize(${pixelW}x${pixelH})`);
+      } else {
+        // Keep backing store reasonable before engine is ready.
+        canvas.width = pixelW;
+        canvas.height = pixelH;
+        logCanvasState(`ResizeObserver -> canvas.size(${pixelW}x${pixelH}) pre-init`);
+      }
+    });
+
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [getCanvasPixelSize, logCanvasState]);
 
   const destroyEngine = async (engine: Engine | null) => {
     if (!engine) return;
@@ -540,6 +625,8 @@ const FishCanvas: React.FC = () => {
   // Initialize Party engine and load demo6 session on mount
   useEffect(() => {
     let cancelled = false;
+    const myToken = ++startupTokenRef.current;
+    const isStale = () => cancelled || startupTokenRef.current !== myToken;
 
     const start = async () => {
       if (!canvasRef.current) {
@@ -550,6 +637,7 @@ const FishCanvas: React.FC = () => {
       const canvas = canvasRef.current;
       logger.info('Canvas element found, initializing Party engine');
       engineReadyRef.current = false;
+      logCanvasState('start() entered');
 
       // Safari/WebGPU stability: ensure canvas is mounted, has explicit size attrs, and layout settled.
       if (!canvas.isConnected || !canvas.parentElement) {
@@ -557,15 +645,20 @@ const FishCanvas: React.FC = () => {
         if (!canvasRef.current || !canvasRef.current.isConnected) return;
       }
 
-      await waitForCanvasNonTinyRect(canvas);
-
       canvas.style.width = `${dimensions.width}px`;
       canvas.style.height = `${dimensions.height}px`;
+      logCanvasState('after setting canvas.style.{width,height}');
 
       // Critical for Safari WebGPU: width/height attributes must be set BEFORE engine.initialize()
+      // Wait a frame for the style changes to apply before reading the layout rect.
+      await nextFrame();
+      if (isStale()) return;
+      await waitForCanvasNonTinyRect(canvas);
+      if (isStale()) return;
       const { pixelW, pixelH } = getCanvasPixelSize(canvas);
       canvas.width = pixelW;
       canvas.height = pixelH;
+      logCanvasState(`pre-initialize canvas.width/height set to ${pixelW}x${pixelH}`);
 
       // Load the session JSON from src on page load
       const sessionUrl = new URL('../demo6.json', import.meta.url);
@@ -589,16 +682,34 @@ const FishCanvas: React.FC = () => {
         const engine = buildPartyEngineFromSession(canvas, session, runtime);
         engineRef.current = engine;
         engineReadyRef.current = false;
+        logCanvasState(`engine created (preferred runtime=${runtime})`);
 
         // Mandatory: yield frames so Safari has a settled layout and WebGPU has a configured canvas.
         await nextFrame();
         await nextFrame();
+        if (isStale()) {
+          destroyInFlightRef.current = destroyEngine(engine);
+          await destroyInFlightRef.current;
+          destroyInFlightRef.current = null;
+          return;
+        }
 
+        logCanvasState('before engine.initialize()');
         await engine.initialize();
         engineReadyRef.current = true;
+        logCanvasState('after engine.initialize()');
+
         // Size in device pixels. Let the engine own backing store updates (important for WebGPU).
-        const { pixelW, pixelH } = getCanvasPixelSize(canvas);
-        engine.setSize(pixelW, pixelH);
+        // Safari sometimes reports a correct layout rect but doesn't actually present until one more frame.
+        // Do a few frames of "size kicks" to catch Safari's delayed layout/paint.
+        for (let i = 0; i < 3; i++) {
+          await nextFrame();
+          if (isStale()) return;
+          const { pixelW, pixelH } = getCanvasPixelSize(canvas);
+          engine.setSize(pixelW, pixelH);
+          logCanvasState(`post-init size kick #${i + 1} -> engine.setSize(${pixelW}x${pixelH})`);
+        }
+        await jiggleWebGPUCanvasSize(engine, canvas, 'post-init');
 
         // Safari can report tiny sizes initially; wait a few frames before big spawns.
         let attempts = 0;
@@ -610,12 +721,41 @@ const FishCanvas: React.FC = () => {
         }
 
         await applyPartySession(engine, session, canvas);
+        logCanvasState('after applyPartySession()');
 
         if (!cancelled) {
           engine.play();
           logger.info(
             `Party engine initialized (${engine.getActualRuntime()}) and demo6 session loaded`
           );
+          logSafeViewportDimensions('after demo6 loaded (manual log)');
+          logCanvasState('after engine.play()');
+
+          // Safari/WebGPU: occasionally the first present doesn't show until a resize.
+          // A one-frame delayed size "kick" tends to fix the blank-on-first-frame issue.
+          for (let i = 0; i < 3; i++) {
+            await nextFrame();
+            const kicked = getCanvasPixelSize(canvas);
+            engine.setSize(kicked.pixelW, kicked.pixelH);
+            logCanvasState(
+              `post-play size kick #${i + 1} -> engine.setSize(${kicked.pixelW}x${kicked.pixelH})`
+            );
+          }
+          await jiggleWebGPUCanvasSize(engine, canvas, 'post-play');
+
+          // Short heartbeat to distinguish "running but not presenting" vs "not ticking yet".
+          if (debugParty) {
+            const startedAt = performance.now();
+            const intervalId = window.setInterval(() => {
+              const elapsed = Math.round(performance.now() - startedAt);
+              logCanvasState(`heartbeat +${elapsed}ms`);
+              // Stop after ~2s or once FPS is non-zero.
+              const e = engineRef.current;
+              if (!e || elapsed > 2000 || (e.getFPS() && e.getFPS() > 0)) {
+                window.clearInterval(intervalId);
+              }
+            }, 250);
+          }
         } else {
           // If we were cancelled mid-init, immediately tear down to avoid racing render loops.
           destroyInFlightRef.current = destroyEngine(engine);
