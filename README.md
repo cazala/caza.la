@@ -1,6 +1,6 @@
 # caza.la
 
-This is my personal website, featuring an interactive fish simulation that responds to user interactions.
+This is my personal website. The homepage renders an interactive demo powered by [`@cazala/party`](https://www.npmjs.com/package/@cazala/party).
 
 ## Development Setup
 
@@ -38,9 +38,7 @@ All code must pass linting and formatting checks before it can be committed.
 
 ## Project Structure
 
-- `/src` - Source code
-  - `/components` - React components
-  - `/lib` - Core simulation logic
-  - `/utils` - Utility functions
+- `/src` - Source code (React + TypeScript)
+  - `/components` - React components (including the canvas demo)
 - `/public` - Static assets
 - `/dist` - Production build output (generated)
