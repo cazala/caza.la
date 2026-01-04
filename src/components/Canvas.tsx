@@ -188,7 +188,6 @@ const FishCanvas: React.FC = () => {
   }, []);
 
   const sleep = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
-  const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   const getCanvasPixelSize = useCallback(
     (canvas: HTMLCanvasElement) => {
       const rect = canvas.getBoundingClientRect();
@@ -200,17 +199,6 @@ const FishCanvas: React.FC = () => {
     },
     [dimensions.width, dimensions.height]
   );
-
-  const waitForCanvasNonTinyRect = async (canvas: HTMLCanvasElement) => {
-    // Safari/WebGPU: canvas can report 0x0 during early layout; wait a few frames.
-    let attempts = 0;
-    while (attempts < 20) {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width >= 4 && rect.height >= 4) return;
-      await nextFrame();
-      attempts++;
-    }
-  };
 
   const destroyEngine = async (engine: Engine | null) => {
     if (!engine) return;
@@ -564,11 +552,6 @@ const FishCanvas: React.FC = () => {
       canvas.style.height = `${dimensions.height}px`;
 
       // Critical for Safari WebGPU: width/height attributes must be set BEFORE engine.initialize()
-      // Wait a frame for the style changes to apply before reading the layout rect.
-      await nextFrame();
-      if (isStale()) return;
-      await waitForCanvasNonTinyRect(canvas);
-      if (isStale()) return;
       const { pixelW, pixelH } = getCanvasPixelSize(canvas);
       canvas.width = pixelW;
       canvas.height = pixelH;
@@ -597,8 +580,6 @@ const FishCanvas: React.FC = () => {
         engineReadyRef.current = false;
 
         // Mandatory: yield frames so Safari has a settled layout and WebGPU has a configured canvas.
-        await nextFrame();
-        await nextFrame();
         if (isStale()) {
           destroyInFlightRef.current = destroyEngine(engine);
           await destroyInFlightRef.current;
@@ -610,7 +591,6 @@ const FishCanvas: React.FC = () => {
         engineReadyRef.current = true;
 
         // Size in device pixels. Let the engine own backing store updates (important for WebGPU).
-        await nextFrame();
         if (isStale()) return;
         const { pixelW, pixelH } = getCanvasPixelSize(canvas);
         engine.setSize(pixelW, pixelH);
@@ -620,7 +600,6 @@ const FishCanvas: React.FC = () => {
         while (attempts < 10) {
           const s = engine.getSize();
           if (s.width >= 4 && s.height >= 4) break;
-          await nextFrame();
           attempts++;
         }
 
@@ -631,7 +610,6 @@ const FishCanvas: React.FC = () => {
           logger.info(
             `Party engine initialized (${engine.getActualRuntime()}) and demo6 session loaded`
           );
-          // await jiggleWebGPUCanvasSize(engine, canvas);
         } else {
           // If we were cancelled mid-init, immediately tear down to avoid racing render loops.
           destroyInFlightRef.current = destroyEngine(engine);
