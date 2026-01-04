@@ -49,6 +49,7 @@ body {
   line-height: 1.2;
   z-index: 10;
   padding: 20px;
+  padding-top: 40px;
   border-radius: 5px;
   user-select: none;
   pointer-events: auto;

@@ -319,7 +319,7 @@ const Canvas: React.FC = () => {
       interaction.setActive(true);
       interaction.setPosition(cx, cy);
       interaction.setStrength(200_000);
-      interaction.setRadius(1600);
+      interaction.setRadius(isMobile ? 1400 : 1600);
     }, 16);
 
     const onPointerDown = (e: PointerEvent) => {
@@ -424,7 +424,7 @@ const Canvas: React.FC = () => {
       window.removeEventListener('pointercancel', onPointerCancel);
       canvas.removeEventListener('pointerleave', onPointerLeave);
     };
-  }, []);
+  }, [isMobile]);
 
   // Prevent scrolling on iOS
   useEffect(() => {
