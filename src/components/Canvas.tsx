@@ -167,7 +167,6 @@ const FishCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
   const engineReadyRef = useRef(false);
-  const startupTokenRef = useRef(0);
   const interactionRef = useRef<Interaction | null>(null);
   const grabRef = useRef<Grab | null>(null);
   const [dimensions, setDimensions] = useState({
@@ -511,8 +510,6 @@ const FishCanvas: React.FC = () => {
   // Initialize Party engine and load demo6 session on mount
   useEffect(() => {
     let cancelled = false;
-    const myToken = ++startupTokenRef.current;
-    const isStale = () => cancelled || startupTokenRef.current !== myToken;
 
     const start = async () => {
       if (!canvasRef.current) {
@@ -557,7 +554,6 @@ const FishCanvas: React.FC = () => {
         engineReadyRef.current = true;
 
         // Size in device pixels. Let the engine own backing store updates (important for WebGPU).
-        if (isStale()) return;
 
         await applyPartySession(engine, session, canvas);
 
