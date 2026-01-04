@@ -112,7 +112,7 @@
     }
   },
   "init": {
-    "numParticles": 25000,
+    "numParticles": 10000,
     "shape": "circle",
     "spacing": 12,
     "particleSize": 5,
