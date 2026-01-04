@@ -170,7 +170,6 @@ const FishCanvas: React.FC = () => {
   const startupTokenRef = useRef(0);
   const interactionRef = useRef<Interaction | null>(null);
   const grabRef = useRef<Grab | null>(null);
-  const destroyInFlightRef = useRef<Promise<void> | null>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -199,23 +198,6 @@ const FishCanvas: React.FC = () => {
     },
     [dimensions.width, dimensions.height]
   );
-
-  const destroyEngine = async (engine: Engine | null) => {
-    if (!engine) return;
-    try {
-      engineReadyRef.current = false;
-      engine.stop();
-      // Safari/WebGPU can wedge on destroy; cap wait so we don't deadlock init.
-      await Promise.race([engine.destroy(), sleep(400)]);
-    } catch (e) {
-      logger.warn('Error destroying Party engine', e);
-    } finally {
-      // Safari workaround: give WebGPU context time to fully release between engines.
-      if (isSafari) {
-        await sleep(200);
-      }
-    }
-  };
 
   // Handle window resize and display changes
   useEffect(() => {
@@ -561,16 +543,6 @@ const FishCanvas: React.FC = () => {
       const session = (await fetch(sessionUrl).then(r => r.json())) as PartySession;
 
       // Serialize teardown/setup (React StrictMode dev mounts can overlap)
-      if (destroyInFlightRef.current) {
-        await destroyInFlightRef.current;
-        destroyInFlightRef.current = null;
-      }
-      if (engineRef.current) {
-        destroyInFlightRef.current = destroyEngine(engineRef.current);
-        await destroyInFlightRef.current;
-        destroyInFlightRef.current = null;
-        engineRef.current = null;
-      }
 
       const preferredRuntime: 'webgpu' | 'auto' = isSafari ? 'webgpu' : 'auto';
 
@@ -580,28 +552,12 @@ const FishCanvas: React.FC = () => {
         engineReadyRef.current = false;
 
         // Mandatory: yield frames so Safari has a settled layout and WebGPU has a configured canvas.
-        if (isStale()) {
-          destroyInFlightRef.current = destroyEngine(engine);
-          await destroyInFlightRef.current;
-          destroyInFlightRef.current = null;
-          return;
-        }
 
         await engine.initialize();
         engineReadyRef.current = true;
 
         // Size in device pixels. Let the engine own backing store updates (important for WebGPU).
         if (isStale()) return;
-        const { pixelW, pixelH } = getCanvasPixelSize(canvas);
-        engine.setSize(pixelW, pixelH);
-
-        // Safari can report tiny sizes initially; wait a few frames before big spawns.
-        let attempts = 0;
-        while (attempts < 10) {
-          const s = engine.getSize();
-          if (s.width >= 4 && s.height >= 4) break;
-          attempts++;
-        }
 
         await applyPartySession(engine, session, canvas);
 
@@ -610,11 +566,6 @@ const FishCanvas: React.FC = () => {
           logger.info(
             `Party engine initialized (${engine.getActualRuntime()}) and demo6 session loaded`
           );
-        } else {
-          // If we were cancelled mid-init, immediately tear down to avoid racing render loops.
-          destroyInFlightRef.current = destroyEngine(engine);
-          await destroyInFlightRef.current;
-          destroyInFlightRef.current = null;
         }
       };
 
@@ -625,12 +576,6 @@ const FishCanvas: React.FC = () => {
 
         // Fallback for Safari/WebGPU instability: if WebGPU fails, restart on CPU so the page stays alive.
         if (!cancelled && preferredRuntime === 'webgpu') {
-          if (engineRef.current) {
-            destroyInFlightRef.current = destroyEngine(engineRef.current);
-            await destroyInFlightRef.current;
-            destroyInFlightRef.current = null;
-            engineRef.current = null;
-          }
           try {
             await tryStartWithRuntime('cpu');
           } catch (cpuError) {
@@ -646,12 +591,10 @@ const FishCanvas: React.FC = () => {
       cancelled = true;
       if (engineRef.current) {
         logger.info('Destroying Party engine on component unmount');
-        const engine = engineRef.current;
         engineRef.current = null;
         engineReadyRef.current = false;
         interactionRef.current = null;
         grabRef.current = null;
-        destroyInFlightRef.current = destroyEngine(engine);
       }
     };
     // Only run once on mount. Resize is handled by a separate effect.
