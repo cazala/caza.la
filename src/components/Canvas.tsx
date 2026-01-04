@@ -201,24 +201,6 @@ const FishCanvas: React.FC = () => {
     [dimensions.width, dimensions.height]
   );
 
-  // Safari/WebGPU: the first present can be blank until a real resize happens.
-  // A 1px "size jiggle" reliably forces the swapchain to start presenting.
-  const jiggleWebGPUCanvasSize = useCallback(
-    async (engine: Engine, canvas: HTMLCanvasElement) => {
-      if (!isSafari) return;
-      if (engine.getActualRuntime() !== 'webgpu') return;
-
-      const { pixelW, pixelH } = getCanvasPixelSize(canvas);
-      const jiggleH = Math.max(1, pixelH - 1);
-      if (jiggleH === pixelH) return;
-
-      engine.setSize(pixelW, jiggleH);
-      await nextFrame();
-      engine.setSize(pixelW, pixelH);
-      await nextFrame();
-    },
-    [getCanvasPixelSize, isSafari]
-  );
   const waitForCanvasNonTinyRect = async (canvas: HTMLCanvasElement) => {
     // Safari/WebGPU: canvas can report 0x0 during early layout; wait a few frames.
     let attempts = 0;
@@ -649,7 +631,7 @@ const FishCanvas: React.FC = () => {
           logger.info(
             `Party engine initialized (${engine.getActualRuntime()}) and demo6 session loaded`
           );
-          await jiggleWebGPUCanvasSize(engine, canvas);
+          // await jiggleWebGPUCanvasSize(engine, canvas);
         } else {
           // If we were cancelled mid-init, immediately tear down to avoid racing render loops.
           destroyInFlightRef.current = destroyEngine(engine);

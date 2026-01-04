@@ -16,7 +16,7 @@ body {
 body {
   position: relative;
   color: black;
-  background: white;
+  background: black;
   font-family: 'Inconsolata', monospace;
   font-size: 100%;
   font-weight: 400;
@@ -52,6 +52,7 @@ body {
   border-radius: 5px;
   user-select: none;
   pointer-events: auto;
+  color: grey;
 }
 
 .text .hello {
