@@ -31,6 +31,8 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     restitution: 0.9,
     friction: 0.1,
     mode: 'bounce',
+    repelDistance: 100,
+    repelStrength: 1000,
   });
 
   const collisions = new Collisions({
@@ -44,8 +46,8 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     targetDensity: 10,
     pressureMultiplier: 100,
     viscosity: 4,
-    nearPressureMultiplier: 39,
-    nearThreshold: 20,
+    nearPressureMultiplier: 50,
+    nearThreshold: 40,
     enableNearPressure: true,
     maxAcceleration: 38,
   });
@@ -54,7 +56,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     enabled: true,
     wander: 20,
     cohesion: 1.5,
-    alignment: 1.5,
+    alignment: 1,
     repulsion: 2,
     separation: 10,
     viewRadius: 100,
@@ -87,7 +89,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
 
   engine.setConstrainIterations(isGpu ? 20 : 5);
   engine.setCellSize(16);
-  engine.setMaxNeighbors(1000);
+  engine.setMaxNeighbors(500);
   engine.setCamera(0, 0);
   engine.setZoom(0.1);
 
@@ -96,7 +98,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
   if (isGpu) {
     engine.setParticles(
       spawner.initParticles({
-        count: isMobile ? 10_000 : 45_000,
+        count: isMobile ? 15_000 : 45_000,
         shape: 'circle',
         center: { x: 0, y: 0 },
         radius: 600,
