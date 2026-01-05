@@ -109,12 +109,12 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
   } else {
     engine.setParticles(
       spawner.initParticles({
-        count: 500,
+        count: 506,
         shape: 'grid',
-        spacing: 110,
-        center: { x: 0, y: 0 },
+        spacing: 70,
+        center: { x: 0, y: 1500 },
         mass: 0.5,
-        size: 50,
+        size: 35,
       })
     );
   }
