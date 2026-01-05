@@ -91,7 +91,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
   engine.setCellSize(16);
   engine.setMaxNeighbors(500);
   engine.setCamera(0, 0);
-  engine.setZoom(0.1);
+  engine.setZoom(0.3);
 
   const spawner = new Spawner();
 
