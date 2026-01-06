@@ -29,7 +29,7 @@ const Canvas = () => {
 
   return (
     <>
-      {isGpu === true ? <WebGPUFallbackBanner /> : null}
+      {isGpu === false ? <WebGPUFallbackBanner /> : null}
       <canvas
         ref={canvasRef}
         tabIndex={0} // Make canvas focusable
