@@ -7,6 +7,7 @@ import { usePartyEngine } from '../hooks/usePartyEngine';
 import { usePointerInteraction } from '../hooks/usePointerInteraction';
 import { usePreventTouchScroll } from '../hooks/usePreventTouchScroll';
 import { useViewportSize } from '../hooks/useViewportSize';
+import WebGPUFallbackBanner from './WebGPUFallbackBanner';
 
 const Canvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -15,7 +16,7 @@ const Canvas = () => {
   const viewport = useViewportSize();
   const onHueChange = useHueTextColor('.text');
 
-  const { engine, engineRef, interactionRef } = usePartyEngine({
+  const { engine, engineRef, interactionRef, isGpu } = usePartyEngine({
     canvasRef,
     isMobile,
     onHueChange,
@@ -27,25 +28,28 @@ const Canvas = () => {
   usePreventTouchScroll();
 
   return (
-    <canvas
-      ref={canvasRef}
-      tabIndex={0} // Make canvas focusable
-      style={{
-        position: 'fixed', // Changed from absolute to fixed to avoid scroll issues
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100vh', // Using vh instead of % to match viewport exactly
-        maxHeight: '100vh', // Ensure it never exceeds viewport height
-        zIndex: 0,
-        display: 'block',
-        outline: 'none',
-        background: 'transparent',
-        pointerEvents: 'auto',
-        touchAction: 'none', // Critical for consistent pointer events on iOS Safari
-        overflow: 'hidden', // Ensure no overflow
-      }}
-    />
+    <>
+      {isGpu === true ? <WebGPUFallbackBanner /> : null}
+      <canvas
+        ref={canvasRef}
+        tabIndex={0} // Make canvas focusable
+        style={{
+          position: 'fixed', // Changed from absolute to fixed to avoid scroll issues
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100vh', // Using vh instead of % to match viewport exactly
+          maxHeight: '100vh', // Ensure it never exceeds viewport height
+          zIndex: 0,
+          display: 'block',
+          outline: 'none',
+          background: 'transparent',
+          pointerEvents: 'auto',
+          touchAction: 'none', // Critical for consistent pointer events on iOS Safari
+          overflow: 'hidden', // Ensure no overflow
+        }}
+      />
+    </>
   );
 };
 

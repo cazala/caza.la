@@ -144,5 +144,5 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     interaction.setActive(false);
   }
 
-  return { engine, interaction };
+  return { engine, interaction, isGpu };
 }

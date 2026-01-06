@@ -15,6 +15,7 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
 
   // Expose engine as state for effects that need to react when it becomes available.
   const [engine, setEngine] = useState<Engine | null>(null);
+  const [isGpu, setIsGpu] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,7 +24,11 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      const { engine: createdEngine, interaction } = await createPartyEngine({
+      const {
+        engine: createdEngine,
+        interaction,
+        isGpu: createdIsGpu,
+      } = await createPartyEngine({
         canvas,
         isMobile,
         onHueChange,
@@ -34,6 +39,7 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
       engineRef.current = createdEngine;
       interactionRef.current = interaction;
       setEngine(createdEngine);
+      setIsGpu(createdIsGpu);
     };
 
     void start();
@@ -43,8 +49,9 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
       engineRef.current = null;
       interactionRef.current = null;
       setEngine(null);
+      setIsGpu(null);
     };
   }, [canvasRef, isMobile, onHueChange]);
 
-  return { engine, engineRef, interactionRef };
+  return { engine, engineRef, interactionRef, isGpu };
 }
