@@ -7,12 +7,56 @@ import { pointerEventToWorld } from '../lib/coords';
 const GPU_SNAP_BACK_MS = 90;
 const GPU_INTERVAL_MS = 16;
 const GPU_DOWN = { strength: 100_000, radius: 800, mode: 'repel' as const };
+const GPU_CENTER_DESKTOP_RADIUS = 1600;
 const GPU_CENTER = {
   strength: 200_000,
-  radius: { mobile: 2000, desktop: 1600 },
+  // On smaller screens (e.g. iPhone SE) we need a tighter radius, while larger viewports
+  // can use a bigger one. Because the overall "feel" is impacted by both width + height
+  // (framing/scale), we blend normalized width and normalized area, then clamp.
+  //
+  // Anchors:
+  // - iPhone SE portrait: 375x667 -> ~1250
+  // - iPhone 14 Pro Max portrait: 430x932 -> ~1800
+  radius: {
+    min: 1250,
+    max: 1800,
+    minWidth: 375,
+    maxWidth: 430,
+    minHeight: 667,
+    maxHeight: 932,
+    // Small shaping tweak: boosts mid-range slightly and reduces high-mid slightly.
+    // Keeps endpoints stable because sin(2πt) = 0 at t=0 and t=1.
+    warp: 0.7,
+  },
   mode: 'repel' as const,
 };
 const CPU_DOWN = { strength: 30_000, radius: 1500, mode: 'attract' as const };
+
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const normalize = (value: number, min: number, max: number) => clamp01((value - min) / (max - min));
+
+const getGpuCenterRadius = (viewportWidth: number, viewportHeight: number) => {
+  // Normalize to portrait-like dimensions so orientation changes don't flip behavior.
+  const w = Math.min(viewportWidth, viewportHeight);
+  const h = Math.max(viewportWidth, viewportHeight);
+  const area = w * h;
+
+  const cfg = GPU_CENTER.radius;
+  const minArea = cfg.minWidth * cfg.minHeight;
+  const maxArea = cfg.maxWidth * cfg.maxHeight;
+
+  const tWidth = normalize(w, cfg.minWidth, cfg.maxWidth);
+  const tArea = normalize(area, minArea, maxArea);
+
+  // Blend width + area so "tall but not that wide" devices don't drift too far.
+  let t = (tWidth + tArea) / 2;
+
+  // Gentle S-curve: increases mid-range a touch and reduces high-mid a touch.
+  t = clamp01(t + cfg.warp * Math.sin(2 * Math.PI * t));
+
+  return lerp(cfg.min, cfg.max, t);
+};
 
 export type UsePointerInteractionOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -58,7 +102,11 @@ export function usePointerInteraction({
       interaction.setActive(true);
       interaction.setPosition(cx, cy);
       interaction.setStrength(GPU_CENTER.strength);
-      interaction.setRadius(isMobile ? GPU_CENTER.radius.mobile : GPU_CENTER.radius.desktop);
+      interaction.setRadius(
+        isMobile
+          ? getGpuCenterRadius(window.innerWidth, window.innerHeight)
+          : GPU_CENTER_DESKTOP_RADIUS
+      );
     }, GPU_INTERVAL_MS);
 
     const onPointerDown = (e: PointerEvent) => {
