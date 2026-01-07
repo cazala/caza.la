@@ -19,6 +19,7 @@ const Canvas = () => {
   const { engine, engineRef, interactionRef, isGpu } = usePartyEngine({
     canvasRef,
     isMobile,
+    enabled: viewport.ready,
     onHueChange,
   });
 

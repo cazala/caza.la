@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 
-export type ViewportSize = { width: number; height: number };
+export type ViewportSize = { width: number; height: number; ready: boolean };
 
 export function useViewportSize(): ViewportSize {
   const [dimensions, setDimensions] = useState<ViewportSize>({
     width: window.innerWidth,
     height: window.innerHeight,
+    ready: false,
   });
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export function useViewportSize(): ViewportSize {
       const safeWidth = clientW > 0 ? Math.min(innerW, clientW) : innerW;
       const safeHeight = clientH > 0 ? Math.min(innerH, clientH) : innerH;
 
-      return { width: safeWidth, height: safeHeight };
+      return { width: safeWidth, height: safeHeight, ready: true };
     };
 
     const handleResize = () => {
@@ -33,9 +34,15 @@ export function useViewportSize(): ViewportSize {
 
     // Some deployments/browsers report incomplete layout metrics on the first tick.
     // Re-check on the next couple animation frames so the first paint isn't stretched.
-    const raf1 = window.requestAnimationFrame(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = window.requestAnimationFrame(() => {
       handleResize();
-      window.requestAnimationFrame(handleResize);
+      raf2 = window.requestAnimationFrame(() => {
+        handleResize();
+        // Mark as ready after the post-first-paint resize has happened.
+        setDimensions(prev => ({ ...prev, ready: true }));
+      });
     });
 
     // Also re-check once after the full window load event (covers late CSS/font/layout).
@@ -48,6 +55,7 @@ export function useViewportSize(): ViewportSize {
     return () => {
       window.removeEventListener('load', onLoad);
       window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
     };

@@ -6,10 +6,16 @@ import { createPartyEngine } from '../lib/party/createPartyEngine';
 export type UsePartyEngineOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   isMobile: boolean;
+  enabled?: boolean;
   onHueChange?: (value: number) => void;
 };
 
-export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEngineOptions) {
+export function usePartyEngine({
+  canvasRef,
+  isMobile,
+  enabled = true,
+  onHueChange,
+}: UsePartyEngineOptions) {
   const engineRef = useRef<Engine | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
 
@@ -21,6 +27,7 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
     let cancelled = false;
 
     const start = async () => {
+      if (!enabled) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -34,7 +41,15 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
         onHueChange,
       });
 
-      if (cancelled) return;
+      if (cancelled) {
+        try {
+          createdEngine.stop();
+        } catch {
+          // ignore
+        }
+        void createdEngine.destroy();
+        return;
+      }
 
       engineRef.current = createdEngine;
       interactionRef.current = interaction;
@@ -46,12 +61,21 @@ export function usePartyEngine({ canvasRef, isMobile, onHueChange }: UsePartyEng
 
     return () => {
       cancelled = true;
+      const prev = engineRef.current;
+      if (prev) {
+        try {
+          prev.stop();
+        } catch {
+          // ignore
+        }
+        void prev.destroy();
+      }
       engineRef.current = null;
       interactionRef.current = null;
       setEngine(null);
       setIsGpu(null);
     };
-  }, [canvasRef, isMobile, onHueChange]);
+  }, [canvasRef, enabled, isMobile, onHueChange]);
 
   return { engine, engineRef, interactionRef, isGpu };
 }
