@@ -7,7 +7,9 @@ import {
   Fluids,
   Interaction,
   Particles,
+  Sensors,
   Spawner,
+  Trails,
 } from '@cazala/party';
 
 export type CreatePartyEngineOptions = {
@@ -15,6 +17,8 @@ export type CreatePartyEngineOptions = {
   isMobile?: boolean;
   onHueChange?: (value: number) => void;
 };
+
+let toggleIntervalId: number | null = null;
 
 export async function createPartyEngine(options: CreatePartyEngineOptions) {
   const { canvas, isMobile = false, onHueChange } = options;
@@ -45,8 +49,8 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     influenceRadius: 50,
     targetDensity: 10,
     pressureMultiplier: 100,
-    viscosity: 4,
-    nearPressureMultiplier: 50,
+    viscosity: isMobile ? 5 : 8,
+    nearPressureMultiplier: isMobile ? 35 : 50,
     nearThreshold: 40,
     enableNearPressure: true,
     maxAcceleration: 38,
@@ -54,12 +58,12 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
 
   const behavior = new Behavior({
     enabled: true,
-    wander: 20,
+    wander: 0,
     cohesion: 1.5,
-    alignment: 1,
+    alignment: isMobile ? 0.5 : 1,
     repulsion: 2,
     separation: 10,
-    viewRadius: 100,
+    viewRadius: isMobile ? 50 : 30,
     viewAngle: 3.14,
   });
 
@@ -70,17 +74,32 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     radius: 700,
   });
 
-  const particle = new Particles({
+  const particles = new Particles({
     enabled: true,
     colorType: 2,
     hue: 1,
   });
 
+  const sensors = new Sensors({
+    enabled: false,
+    sensorRadius: 3,
+    sensorDistance: 20,
+    sensorStrength: 3000,
+    sensorAngle: Math.PI / 6,
+    sensorThreshold: 0.005,
+  });
+
+  const trails = new Trails({
+    enabled: false,
+    trailDecay: 10,
+    trailDiffuse: 0,
+  });
+
   const engine = new Engine({
     canvas,
     runtime: 'auto',
-    forces: [environment, boundary, collisions, fluids, behavior, interaction],
-    render: [particle],
+    forces: [environment, boundary, collisions, fluids, behavior, interaction, sensors],
+    render: [trails, particles],
   });
 
   await engine.initialize();
@@ -101,7 +120,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
         count: isMobile ? 15_000 : 45_000,
         shape: 'circle',
         center: { x: 0, y: 0 },
-        radius: 600,
+        radius: 1200,
         mass: 0.25,
         size: 5,
       })
@@ -120,20 +139,50 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
   }
 
   engine.addOscillator({
-    moduleName: 'particles',
+    moduleName: particles.name,
     inputName: 'hue',
     min: 0,
     max: 1,
     speedHz: 0.01,
   });
+
   if (onHueChange) {
-    engine.addOscillatorListener('particles', 'hue', onHueChange);
+    engine.addOscillatorListener(particles.name, 'hue', onHueChange);
   }
 
   if (!isGpu) {
     fluids.setEnabled(false);
     behavior.setEnabled(false);
     environment.setEnabled(true);
+  } else {
+    // WebGPU: start in the default config, then toggle to the alternate config every 30s.
+    const applyDefaultConfig = () => {
+      sensors.setEnabled(false);
+      trails.setEnabled(false);
+      behavior.setEnabled(true);
+      fluids.setEnabled(true);
+      collisions.setEnabled(true);
+    };
+
+    const applyAlternateConfig = () => {
+      sensors.setEnabled(true);
+      trails.setEnabled(true);
+      behavior.setEnabled(false);
+      fluids.setEnabled(false);
+      collisions.setEnabled(false);
+    };
+
+    applyDefaultConfig();
+
+    let useAlternate = false;
+    if (toggleIntervalId) {
+      window.clearInterval(toggleIntervalId);
+    }
+    toggleIntervalId = window.setInterval(() => {
+      useAlternate = !useAlternate;
+      if (useAlternate) applyAlternateConfig();
+      else applyDefaultConfig();
+    }, 60_000);
   }
 
   engine.play();
