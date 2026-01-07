@@ -6,7 +6,11 @@ import { pointerEventToWorld } from '../lib/coords';
 // Pointer tuning (kept local to this hook; stable module-level constants avoid hook dep noise)
 const GPU_SNAP_BACK_MS = 90;
 const GPU_INTERVAL_MS = 16;
-const GPU_DOWN = { strength: 100_000, radius: 800, mode: 'repel' as const };
+const GPU_DOWN = {
+  strength: { desktop: 100_000, mobile: 75_000 },
+  radius: { desktop: 800, mobile: 700 },
+  mode: 'repel' as const,
+};
 const GPU_CENTER_DESKTOP_RADIUS = 1600;
 const GPU_CENTER = {
   strength: 200_000,
@@ -136,8 +140,8 @@ export function usePointerInteraction({
       if (isGpu) {
         lastUserPointerAtRef.current = performance.now();
         interaction.setMode(GPU_DOWN.mode);
-        interaction.setStrength(GPU_DOWN.strength);
-        interaction.setRadius(GPU_DOWN.radius);
+        interaction.setStrength(isMobile ? GPU_DOWN.strength.mobile : GPU_DOWN.strength.desktop);
+        interaction.setRadius(isMobile ? GPU_DOWN.radius.mobile : GPU_DOWN.radius.desktop);
       } else {
         // CPU demo: press/hold attracts, and dragging updates the position.
         cpuPointerDownRef.current = true;
