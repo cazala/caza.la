@@ -120,7 +120,7 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
         count: isMobile ? 15_000 : 45_000,
         shape: 'circle',
         center: { x: 0, y: 0 },
-        radius: isMobile ? 1200 : 1500,
+        radius: isMobile ? 1200 : 2000,
         mass: 0.25,
         size: 5,
       })
