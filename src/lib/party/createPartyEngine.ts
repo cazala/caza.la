@@ -5,6 +5,7 @@ import {
   Engine,
   Environment,
   Fluids,
+  FluidsMethod,
   Interaction,
   Particles,
   Sensors,
@@ -46,21 +47,17 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
 
   const fluids = new Fluids({
     enabled: true,
-    influenceRadius: 50,
-    targetDensity: 10,
-    pressureMultiplier: 100,
-    viscosity: isMobile ? 5 : 8,
-    nearPressureMultiplier: isMobile ? 35 : 50,
-    nearThreshold: 40,
-    enableNearPressure: true,
-    maxAcceleration: 38,
+    method: FluidsMethod.Picflip,
+    influenceRadius: 100,
+    targetDensity: 2,
+    pressureMultiplier: 80,
   });
 
   const behavior = new Behavior({
     enabled: true,
     wander: 0,
     cohesion: 1.5,
-    alignment: isMobile ? 0.5 : 1,
+    alignment: isMobile ? 0.3 : 0.5,
     repulsion: 2,
     separation: 10,
     viewRadius: isMobile ? 50 : 30,
