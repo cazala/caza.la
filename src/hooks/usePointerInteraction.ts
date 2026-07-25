@@ -67,6 +67,7 @@ export type UsePointerInteractionOptions = {
   engineRef: RefObject<Engine | null>;
   interactionRef: RefObject<Interaction | null>;
   isMobile: boolean;
+  enabled?: boolean;
 };
 
 export function usePointerInteraction({
@@ -74,6 +75,7 @@ export function usePointerInteraction({
   engineRef,
   interactionRef,
   isMobile,
+  enabled = true,
 }: UsePointerInteractionOptions) {
   // Track recent user interaction so the GPU "center force" interval doesn't instantly overwrite
   // the click position (Safari timing differences made this feel flaky).
@@ -82,7 +84,7 @@ export function usePointerInteraction({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !enabled) return;
 
     const getEngine = () => engineRef.current;
     const getInteraction = () => interactionRef.current;
@@ -217,5 +219,5 @@ export function usePointerInteraction({
       window.removeEventListener('pointercancel', onPointerCancel);
       canvas.removeEventListener('pointerleave', onPointerLeave);
     };
-  }, [canvasRef, engineRef, interactionRef, isMobile]);
+  }, [canvasRef, enabled, engineRef, interactionRef, isMobile]);
 }

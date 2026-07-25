@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Engine, Interaction } from '@cazala/party';
 import type { RefObject } from 'react';
 import { createPartyEngine } from '../lib/party/createPartyEngine';
@@ -18,6 +18,8 @@ export function usePartyEngine({
 }: UsePartyEngineOptions) {
   const engineRef = useRef<Engine | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
+  const transitionRef = useRef<((durationMs?: number) => Promise<void>) | null>(null);
+  const disposeRef = useRef<(() => Promise<void>) | null>(null);
 
   // Expose engine as state for effects that need to react when it becomes available.
   const [engine, setEngine] = useState<Engine | null>(null);
@@ -35,6 +37,8 @@ export function usePartyEngine({
         engine: createdEngine,
         interaction,
         isGpu: createdIsGpu,
+        startWorkTransition,
+        dispose,
       } = await createPartyEngine({
         canvas,
         isMobile,
@@ -42,17 +46,14 @@ export function usePartyEngine({
       });
 
       if (cancelled) {
-        try {
-          createdEngine.stop();
-        } catch {
-          // ignore
-        }
-        void createdEngine.destroy();
+        void dispose();
         return;
       }
 
       engineRef.current = createdEngine;
       interactionRef.current = interaction;
+      transitionRef.current = startWorkTransition;
+      disposeRef.current = dispose;
       setEngine(createdEngine);
       setIsGpu(createdIsGpu);
     };
@@ -61,21 +62,23 @@ export function usePartyEngine({
 
     return () => {
       cancelled = true;
-      const prev = engineRef.current;
-      if (prev) {
-        try {
-          prev.stop();
-        } catch {
-          // ignore
-        }
-        void prev.destroy();
+      const dispose = disposeRef.current;
+      if (dispose) {
+        void dispose();
       }
       engineRef.current = null;
       interactionRef.current = null;
+      transitionRef.current = null;
+      disposeRef.current = null;
       setEngine(null);
       setIsGpu(null);
     };
   }, [canvasRef, enabled, isMobile, onHueChange]);
 
-  return { engine, engineRef, interactionRef, isGpu };
+  const startWorkTransition = useCallback(
+    (durationMs = 600) => transitionRef.current?.(durationMs) ?? Promise.resolve(),
+    []
+  );
+
+  return { engine, engineRef, interactionRef, isGpu, startWorkTransition };
 }
