@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import AutomataCanvas from './components/AutomataCanvas';
 import Canvas from './components/Canvas';
+import { useHueTextColor } from './hooks/useHueTextColor';
 import './App.css';
 
 type View = 'home' | 'work';
@@ -16,6 +17,7 @@ const isModifiedClick = (event: MouseEvent<HTMLAnchorElement>) =>
 function App() {
   const [view, setView] = useState<View>(viewFromPath);
   const [isEnteringWork, setIsEnteringWork] = useState(false);
+  const onWorkHueChange = useHueTextColor('.work-panel');
 
   useEffect(() => {
     const onPopState = () => {
@@ -86,29 +88,23 @@ function App() {
         </>
       ) : (
         <>
-          <AutomataCanvas />
+          <AutomataCanvas onHueChange={onWorkHueChange} />
           <main className="content-panel work-panel">
-            <header className="work-header">
-              <p className="eyebrow">Selected open source</p>
-              <h1>Things I&apos;ve been building lately.</h1>
-            </header>
+            <p>
+              <b className="work-heading">Things I&apos;ve been building lately.</b>
+              <br />
+              <br />
+              <b className="work-heading">Open source:</b>
+            </p>
 
-            <div className="project-list">
-              <a className="project-link" href="/party">
-                <span className="project-title">
-                  party <span aria-hidden="true">↗</span>
-                </span>
-                <span className="project-description">
-                  A WebGPU particle system and physics engine.
-                </span>
-              </a>
-              <a className="project-link" href="/automata">
-                <span className="project-title">
-                  automata <span aria-hidden="true">↗</span>
-                </span>
-                <span className="project-description">A WebGPU cellular automata library.</span>
-              </a>
-            </div>
+            <ul className="project-list">
+              <li>
+                <a href="/party">party</a>: a WebGPU particle system and physics engine.
+              </li>
+              <li>
+                <a href="/automata">automata</a>: a WebGPU cellular automata library.
+              </li>
+            </ul>
 
             <nav className="work-footer" aria-label="Work page links">
               <a href="/" onClick={returnHome}>
