@@ -6,12 +6,80 @@ const MAX_CELLS = 2048;
 const ERASE_RADIUS = 22;
 const HUE_SPEED_HZ = 0.01;
 const HUE_UPDATE_INTERVAL_MS = 50;
+const PURE_BLUE_HUE = 240 / 360;
+const BLUE_SPEEDUP_RADIUS = 30 / 360;
+const BLUE_SPEEDUP_PEAK_MULTIPLIER = 3;
+const BLUE_SPEEDUP_SAMPLES = 360;
 const CENTER_CLEAR_INTERVAL_MS = 32;
 const CENTER_CLEAR_MARGIN_PX = 14;
 const EMPTY_NEURAL_CELL = [0, 0, 0, 0, 0, 0];
 
+const BLUE_SPEEDUP_START = PURE_BLUE_HUE - BLUE_SPEEDUP_RADIUS;
+const BLUE_SPEEDUP_END = PURE_BLUE_HUE + BLUE_SPEEDUP_RADIUS;
+const BLUE_SPEEDUP_SPAN = BLUE_SPEEDUP_END - BLUE_SPEEDUP_START;
+const BLUE_SPEEDUP_HUE_STEP = BLUE_SPEEDUP_SPAN / BLUE_SPEEDUP_SAMPLES;
+const SECONDS_BEFORE_BLUE = BLUE_SPEEDUP_START / HUE_SPEED_HZ;
+
+const blueSpeedMultiplierAt = (hue: number) => {
+  const progress = (hue - BLUE_SPEEDUP_START) / BLUE_SPEEDUP_SPAN;
+  const eased = Math.sin(Math.PI * progress);
+  return 1 + (BLUE_SPEEDUP_PEAK_MULTIPLIER - 1) * eased * eased;
+};
+
+const BLUE_SPEEDUP_CUMULATIVE_SECONDS = (() => {
+  const cumulativeSeconds = [0];
+  let elapsedSeconds = 0;
+
+  for (let index = 0; index < BLUE_SPEEDUP_SAMPLES; index += 1) {
+    const midpointHue = BLUE_SPEEDUP_START + (index + 0.5) * BLUE_SPEEDUP_HUE_STEP;
+    elapsedSeconds += BLUE_SPEEDUP_HUE_STEP / (HUE_SPEED_HZ * blueSpeedMultiplierAt(midpointHue));
+    cumulativeSeconds.push(elapsedSeconds);
+  }
+
+  return cumulativeSeconds;
+})();
+
+const SECONDS_AROUND_BLUE = BLUE_SPEEDUP_CUMULATIVE_SECONDS[BLUE_SPEEDUP_SAMPLES];
+const HUE_CYCLE_DURATION_SECONDS =
+  SECONDS_BEFORE_BLUE + SECONDS_AROUND_BLUE + (1 - BLUE_SPEEDUP_END) / HUE_SPEED_HZ;
+
 type AutomataCanvasProps = {
   onHueChange?: (value: number) => void;
+};
+
+const blueHueAtTime = (elapsedSeconds: number) => {
+  let low = 0;
+  let high = BLUE_SPEEDUP_SAMPLES;
+
+  while (low + 1 < high) {
+    const midpoint = Math.floor((low + high) / 2);
+    if (BLUE_SPEEDUP_CUMULATIVE_SECONDS[midpoint] <= elapsedSeconds) {
+      low = midpoint;
+    } else {
+      high = midpoint;
+    }
+  }
+
+  const segmentStart = BLUE_SPEEDUP_CUMULATIVE_SECONDS[low];
+  const segmentEnd = BLUE_SPEEDUP_CUMULATIVE_SECONDS[low + 1];
+  const segmentProgress = (elapsedSeconds - segmentStart) / (segmentEnd - segmentStart);
+
+  return BLUE_SPEEDUP_START + (low + segmentProgress) * BLUE_SPEEDUP_HUE_STEP;
+};
+
+const hueAtTime = (timestampMs: number) => {
+  const cycleTime = (timestampMs * 0.001) % HUE_CYCLE_DURATION_SECONDS;
+
+  if (cycleTime < SECONDS_BEFORE_BLUE) {
+    return cycleTime * HUE_SPEED_HZ;
+  }
+
+  const timeAroundBlue = cycleTime - SECONDS_BEFORE_BLUE;
+  if (timeAroundBlue < SECONDS_AROUND_BLUE) {
+    return blueHueAtTime(timeAroundBlue);
+  }
+
+  return BLUE_SPEEDUP_END + (timeAroundBlue - SECONDS_AROUND_BLUE) * HUE_SPEED_HZ;
 };
 
 const hueToRgba = (hue: number) => {
@@ -65,7 +133,7 @@ const AutomataCanvas = ({ onHueChange }: AutomataCanvasProps) => {
       const height = canvas.clientHeight || window.innerHeight || 1;
       const automaton = new Neural();
       const seed = automaton.applyPreset('worms');
-      const initialHue = (performance.now() * HUE_SPEED_HZ * 0.001) % 1;
+      const initialHue = hueAtTime(performance.now());
 
       engine = new Engine({
         canvas,
@@ -128,7 +196,7 @@ const AutomataCanvas = ({ onHueChange }: AutomataCanvasProps) => {
         let lastHueUpdate = 0;
         const animateHue = (now: number) => {
           if (now - lastHueUpdate >= HUE_UPDATE_INTERVAL_MS) {
-            const hue = (now * HUE_SPEED_HZ * 0.001) % 1;
+            const hue = hueAtTime(now);
             engine?.setRenderConfig({ colorOn: hueToRgba(hue) });
             onHueChange?.(hue);
             lastHueUpdate = now;
