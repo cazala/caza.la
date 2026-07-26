@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAutoFocusCanvas } from '../hooks/useAutoFocusCanvas';
 import { useCanvasBackingStore } from '../hooks/useCanvasBackingStore';
 import { useHueTextColor } from '../hooks/useHueTextColor';
@@ -9,14 +9,20 @@ import { usePreventTouchScroll } from '../hooks/usePreventTouchScroll';
 import { useViewportSize } from '../hooks/useViewportSize';
 import WebGPUFallbackBanner from './WebGPUFallbackBanner';
 
-const Canvas = () => {
+type CanvasProps = {
+  transitionRequested?: boolean;
+  onTransitionComplete?: () => void;
+};
+
+const Canvas = ({ transitionRequested = false, onTransitionComplete }: CanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const transitionStartedRef = useRef(false);
 
   const isMobile = useIsMobile();
   const viewport = useViewportSize();
-  const onHueChange = useHueTextColor('.text');
+  const onHueChange = useHueTextColor('.home-panel');
 
-  const { engine, engineRef, interactionRef, isGpu } = usePartyEngine({
+  const { engine, engineRef, interactionRef, isGpu, startWorkTransition } = usePartyEngine({
     canvasRef,
     isMobile,
     enabled: viewport.ready,
@@ -25,13 +31,39 @@ const Canvas = () => {
 
   useCanvasBackingStore({ canvasRef, viewport, engine });
   useAutoFocusCanvas(canvasRef);
-  usePointerInteraction({ canvasRef, engineRef, interactionRef, isMobile });
+  usePointerInteraction({
+    canvasRef,
+    engineRef,
+    interactionRef,
+    isMobile,
+    enabled: !transitionRequested,
+  });
   usePreventTouchScroll();
+
+  useEffect(() => {
+    if (!transitionRequested) {
+      transitionStartedRef.current = false;
+      return;
+    }
+    if (!engine || transitionStartedRef.current) return;
+
+    transitionStartedRef.current = true;
+    let active = true;
+    void startWorkTransition(600).then(() => {
+      if (active) onTransitionComplete?.();
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [engine, onTransitionComplete, startWorkTransition, transitionRequested]);
 
   return (
     <>
       {isGpu === false ? <WebGPUFallbackBanner /> : null}
       <canvas
+        aria-hidden="true"
+        className="party-canvas"
         ref={canvasRef}
         tabIndex={0} // Make canvas focusable
         style={{
@@ -45,7 +77,7 @@ const Canvas = () => {
           display: 'block',
           outline: 'none',
           background: 'transparent',
-          pointerEvents: 'auto',
+          pointerEvents: transitionRequested ? 'none' : 'auto',
           touchAction: 'none', // Critical for consistent pointer events on iOS Safari
           overflow: 'hidden', // Ensure no overflow
         }}

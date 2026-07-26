@@ -19,10 +19,10 @@ export type CreatePartyEngineOptions = {
   onHueChange?: (value: number) => void;
 };
 
-let toggleIntervalId: number | null = null;
-
 export async function createPartyEngine(options: CreatePartyEngineOptions) {
   const { canvas, isMobile = false, onHueChange } = options;
+  let toggleIntervalId: number | null = null;
+  let transitionFrameId: number | null = null;
 
   // Demo tuning is intentionally inline so it's easy to tweak without jumping files.
   const environment = new Environment({
@@ -172,9 +172,6 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     applyDefaultConfig();
 
     let useAlternate = false;
-    if (toggleIntervalId) {
-      window.clearInterval(toggleIntervalId);
-    }
     toggleIntervalId = window.setInterval(() => {
       useAlternate = !useAlternate;
       if (useAlternate) applyAlternateConfig();
@@ -190,5 +187,131 @@ export async function createPartyEngine(options: CreatePartyEngineOptions) {
     interaction.setActive(false);
   }
 
-  return { engine, interaction, isGpu };
+  const applyWorkTransitionScene = () => {
+    environment.setEnabled(true);
+    environment.setGravityStrength(0);
+    environment.setGravityDirection('down');
+    environment.setInertia(0);
+    environment.setFriction(0);
+    environment.setDamping(0);
+
+    boundary.setEnabled(true);
+    boundary.setMode('warp');
+    boundary.setRestitution(0.9);
+    boundary.setFriction(0.1);
+    boundary.setRepelDistance(0);
+    boundary.setRepelStrength(0);
+
+    collisions.setEnabled(false);
+
+    fluids.setEnabled(true);
+    fluids.setMethod(FluidsMethod.Sph);
+    fluids.setInfluenceRadius(27);
+    fluids.setTargetDensity(5);
+    fluids.setPressureMultiplier(20);
+    fluids.setViscosity(1);
+    fluids.setNearPressureMultiplier(50);
+    fluids.setNearThreshold(20);
+    fluids.setEnableNearPressure(true);
+    fluids.setMaxAcceleration(68);
+
+    behavior.setEnabled(true);
+    behavior.setWander(20);
+    behavior.setCohesion(1.5);
+    behavior.setAlignment(6.9);
+    behavior.setRepulsion(5.5);
+    behavior.setChase(0);
+    behavior.setAvoid(0);
+    behavior.setSeparation(11);
+    behavior.setViewRadius(100);
+    behavior.setViewAngle(Math.PI * 2);
+
+    sensors.setEnabled(true);
+    sensors.setSensorDistance(30);
+    sensors.setSensorAngle(0.5061454830783556);
+    sensors.setSensorRadius(5);
+    sensors.setSensorThreshold(0.12);
+    sensors.setSensorStrength(3000);
+    sensors.setFollowBehavior('any');
+    sensors.setFleeBehavior('none');
+    sensors.setColorSimilarityThreshold(0.4);
+    sensors.setFleeAngle(Math.PI / 2);
+
+    trails.setEnabled(true);
+    trails.setTrailDecay(10);
+    trails.setTrailDiffuse(0);
+
+    engine.setConstrainIterations(1);
+    engine.setCellSize(40);
+    engine.setMaxNeighbors(109);
+  };
+
+  const startWorkTransition = (durationMs = 600) =>
+    new Promise<void>(resolve => {
+      if (toggleIntervalId !== null) {
+        window.clearInterval(toggleIntervalId);
+        toggleIntervalId = null;
+      }
+      if (transitionFrameId !== null) {
+        window.cancelAnimationFrame(transitionFrameId);
+      }
+
+      applyWorkTransitionScene();
+
+      const camera = engine.getCamera();
+      const size = engine.getSize();
+      const zoom = Math.max(engine.getZoom(), 0.001);
+      const startRadius = interaction.getRadius();
+      const cornerRadius = Math.hypot(size.width, size.height) / (2 * zoom);
+      const endRadius = Math.max(startRadius * 1.5, cornerRadius * 1.45);
+      const startStrength = Math.max(interaction.getStrength(), 200_000);
+      const endStrength = startStrength * 1.8;
+      const startedAt = performance.now();
+
+      interaction.setMode('repel');
+      interaction.setPosition(camera.x, camera.y);
+      interaction.setStrength(startStrength);
+      interaction.setActive(true);
+
+      const animate = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / durationMs);
+        const eased =
+          progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        interaction.setPosition(camera.x, camera.y);
+        interaction.setRadius(startRadius + (endRadius - startRadius) * eased);
+        interaction.setStrength(startStrength + (endStrength - startStrength) * eased);
+
+        if (progress < 1) {
+          transitionFrameId = window.requestAnimationFrame(animate);
+          return;
+        }
+
+        transitionFrameId = null;
+        resolve();
+      };
+
+      transitionFrameId = window.requestAnimationFrame(animate);
+    });
+
+  const dispose = async () => {
+    if (toggleIntervalId !== null) {
+      window.clearInterval(toggleIntervalId);
+      toggleIntervalId = null;
+    }
+    if (transitionFrameId !== null) {
+      window.cancelAnimationFrame(transitionFrameId);
+      transitionFrameId = null;
+    }
+    try {
+      engine.stop();
+    } catch {
+      // The engine may already be stopped during a route change.
+    }
+    await engine.destroy();
+  };
+
+  return { engine, interaction, isGpu, startWorkTransition, dispose };
 }
