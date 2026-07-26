@@ -29,12 +29,12 @@ const openSourceProjects = [
   {
     name: 'automata',
     href: 'https://caza.la/automata',
-    description: 'wegpu cellular automata library',
+    description: 'webgpu cellular automata',
   },
   {
     name: 'synaptic',
     href: 'https://github.com/cazala/synaptic',
-    description: 'javascript neural network library.',
+    description: 'javascript neural network',
   },
   {
     name: 'coin-hive',
@@ -54,13 +54,13 @@ const experience = [
     company: 'MuleSoft',
     years: '2014–2017',
     description:
-      'owned the UI of Flow Designer from prototype to production and led its distributed frontend team.',
+      'led the distributed frontend team and took the visual editor for building system integrations and automations from prototype to production.',
   },
   {
     company: 'Soflex',
     years: '2011–2014',
     description:
-      'built web-based AVL and GIS systems for emergency and police services of Buenos Aires city',
+      'built web-based mapping and vehicle-tracking systems for Buenos Aires emergency and police services.',
   },
   {
     company: 'Envato',
@@ -142,7 +142,7 @@ function App() {
               <br />
               I&apos;m a Software Engineer from Argentina.
               <br />
-              <br />I make tools for things that move, grow, and behave.
+              <br />I like making things that move, grow, and behave.
             </p>
             <a className="work-link" href="/work" onClick={beginWorkTransition}>
               see what I&apos;ve been building <span aria-hidden="true">→</span>
@@ -161,10 +161,6 @@ function App() {
         <>
           <AutomataCanvas onHueChange={onWorkHueChange} />
           <main className="content-panel work-panel">
-            {/* <p>
-              <b className="work-heading">Things I&apos;ve been building lately.</b>
-            </p>*/}
-
             <nav className="work-switcher align-center full-width" aria-label="Work sections">
               <a
                 aria-current={workSection === 'open-source' ? 'page' : undefined}
@@ -189,10 +185,14 @@ function App() {
                 <ul className="work-list">
                   {openSourceProjects.map(project => (
                     <li key={project.name}>
-                      <a href={project.href} target="_blank" rel="noopener noreferrer">
-                        {project.name}
+                      <a
+                        className="project-link"
+                        href={project.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <b className="project-name">{project.name}</b>: {project.description}
                       </a>
-                      : {project.description}
                     </li>
                   ))}
                 </ul>
@@ -212,10 +212,20 @@ function App() {
               <a href="/" onClick={returnHome}>
                 <span aria-hidden="true">←</span> home
               </a>
-              <a href="https://github.com/cazala" target="_blank" rel="noopener noreferrer">
+              <a
+                className="work-social-link"
+                href="https://github.com/cazala"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 github
               </a>
-              <a href="https://x.com/juancazala" target="_blank" rel="noopener noreferrer">
+              <a
+                className="work-social-link"
+                href="https://x.com/juancazala"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 x
               </a>
             </nav>

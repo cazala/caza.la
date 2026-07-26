@@ -157,9 +157,15 @@ body {
   margin-top: 24px;
 }
 
-.social-links a + a::before,
-.work-switcher a + a::before,
-.work-footer a + a::before {
+.social-links a,
+.work-footer .work-social-link {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.social-links a+a::before,
+.work-switcher a+a::before,
+.work-footer a+a::before {
+  display: inline-block;
   margin: 0 10px;
   color: rgba(255, 255, 255, 0.34);
   content: '|';
@@ -167,7 +173,7 @@ body {
 }
 
 .work-panel {
-  width: min(380px, calc(100% - 80px));
+  width: min(400px, calc(100% - 80px));
   max-height: 85dvh;
   padding: 40px 20px 20px;
   overflow-y: auto;
@@ -185,6 +191,7 @@ body {
 }
 
 .work-switcher {
+  justify-content: center;
   margin-top: 24px;
 }
 
@@ -208,6 +215,28 @@ body {
 
 .work-list li:last-child {
   margin-bottom: 0;
+}
+
+.content-panel .project-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.content-panel .project-link .project-name {
+  color: white;
+}
+
+.content-panel .project-link:hover {
+  text-decoration: none;
+}
+
+.content-panel .project-link:hover .project-name {
+  text-decoration: underline;
+}
+
+.project-name {
+  font-weight: 700;
 }
 
 .work-footer {
@@ -264,6 +293,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .home-panel,
   .automata-canvas,
   .automata-fallback,
