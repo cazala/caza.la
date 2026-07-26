@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Engine, Neural, gridForCanvas } from '@cazala/automata';
 
-const CELL_SIZE = 1.5;
+const CELL_SIZE = 2;
 const MAX_CELLS = 2048;
 const ERASE_RADIUS = 22;
 const HUE_SPEED_HZ = 0.01;
