@@ -34,7 +34,7 @@ const openSourceProjects = [
   {
     name: 'synaptic',
     href: 'https://github.com/cazala/synaptic',
-    description: 'javascript neural network',
+    description: 'neural networks framework',
   },
   {
     name: 'coin-hive',
