@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import AutomataCanvas from './components/AutomataCanvas';
 import Canvas from './components/Canvas';
 import { useHueTextColor } from './hooks/useHueTextColor';
+import { applySeo } from './lib/seo';
 import './App.css';
 
 type View = 'home' | 'work';
@@ -23,12 +24,12 @@ const isModifiedClick = (event: MouseEvent<HTMLAnchorElement>) =>
 const openSourceProjects = [
   {
     name: 'party',
-    href: 'https://caza.la/party',
+    href: 'https://caza.la/party/',
     description: 'particle system and physics engine',
   },
   {
     name: 'automata',
-    href: 'https://caza.la/automata',
+    href: 'https://caza.la/automata/',
     description: 'webgpu cellular automata',
   },
   {
@@ -88,10 +89,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    document.title =
-      view === 'home'
-        ? 'Juan Cazala'
-        : `${workSection === 'open-source' ? 'Open Source' : 'Experience'} — Juan Cazala`;
+    applySeo(view === 'home' ? '/' : workSection === 'open-source' ? '/work' : '/work/experience');
   }, [view, workSection]);
 
   const beginWorkTransition = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -133,10 +131,8 @@ function App() {
             onTransitionComplete={finishWorkTransition}
           />
           <main className={`content-panel home-panel${isEnteringWork ? ' is-entering' : ''}`}>
+            <h1 className="hello">Hello World.</h1>
             <p>
-              <b className="hello">Hello World.</b>
-              <br />
-              <br />
               My name is Juan Cazala.
               <br />
               <br />
@@ -181,6 +177,11 @@ function App() {
             </nav>
 
             <section className="work-section" key={workSection}>
+              <h1 className="visually-hidden">
+                {workSection === 'open-source'
+                  ? 'Open source projects by Juan Cazala'
+                  : 'Juan Cazala’s software engineering experience'}
+              </h1>
               {workSection === 'open-source' ? (
                 <ul className="work-list">
                   {openSourceProjects.map(project => (
