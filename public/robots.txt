@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://caza.la/sitemap.xml
+Sitemap: https://caza.la/party/sitemap.xml
+Sitemap: https://caza.la/automata/sitemap.xml
