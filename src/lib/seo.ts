@@ -3,6 +3,7 @@ import {
   createStructuredData,
   getSeoRoute,
   siteMetadata,
+  socialImageUrl,
   type SeoPath,
 } from '../../seo.config';
 
@@ -43,10 +44,18 @@ export const applySeo = (path: SeoPath) => {
   setMeta('property', 'og:type', 'website');
   setMeta('property', 'og:site_name', siteMetadata.name);
   setMeta('property', 'og:locale', siteMetadata.locale);
+  setMeta('property', 'og:image', socialImageUrl);
+  setMeta('property', 'og:image:secure_url', socialImageUrl);
+  setMeta('property', 'og:image:type', siteMetadata.socialImage.type);
+  setMeta('property', 'og:image:width', String(siteMetadata.socialImage.width));
+  setMeta('property', 'og:image:height', String(siteMetadata.socialImage.height));
+  setMeta('property', 'og:image:alt', siteMetadata.socialImage.alt);
   setMeta('name', 'twitter:card', 'summary');
   setMeta('name', 'twitter:title', route.title);
   setMeta('name', 'twitter:description', route.description);
   setMeta('name', 'twitter:creator', siteMetadata.twitterHandle);
+  setMeta('name', 'twitter:image', socialImageUrl);
+  setMeta('name', 'twitter:image:alt', siteMetadata.socialImage.alt);
   setCanonical(canonical);
 
   let structuredData = document.head.querySelector<HTMLScriptElement>(

@@ -13,8 +13,17 @@ export const siteMetadata = {
   author: 'Juan Cazala',
   locale: 'en_US',
   twitterHandle: '@juancazala',
+  socialImage: {
+    path: '/social.png',
+    width: 1200,
+    height: 1200,
+    type: 'image/png',
+    alt: 'Portrait of Juan Cazala wearing a red, white, and black fox mask',
+  },
   sameAs: ['https://github.com/cazala', 'https://x.com/juancazala'],
 } as const;
+
+export const socialImageUrl = `${siteMetadata.url}${siteMetadata.socialImage.path}`;
 
 export const seoRoutes: Record<SeoPath, SeoRoute> = {
   '/': {
@@ -49,6 +58,7 @@ export const createStructuredData = (route: SeoRoute) => {
   const canonical = canonicalUrl(route);
   const websiteId = `${siteMetadata.url}/#website`;
   const personId = `${siteMetadata.url}/#juan-cazala`;
+  const imageId = `${siteMetadata.url}/#social-image`;
 
   return {
     '@context': 'https://schema.org',
@@ -64,12 +74,24 @@ export const createStructuredData = (route: SeoRoute) => {
         '@id': personId,
         name: siteMetadata.author,
         url: `${siteMetadata.url}/`,
+        image: {
+          '@id': imageId,
+        },
         jobTitle: 'Software Engineer',
         nationality: {
           '@type': 'Country',
           name: 'Argentina',
         },
         sameAs: siteMetadata.sameAs,
+      },
+      {
+        '@type': 'ImageObject',
+        '@id': imageId,
+        url: socialImageUrl,
+        contentUrl: socialImageUrl,
+        width: siteMetadata.socialImage.width,
+        height: siteMetadata.socialImage.height,
+        caption: siteMetadata.socialImage.alt,
       },
       {
         '@type': route.pageType,
@@ -82,6 +104,9 @@ export const createStructuredData = (route: SeoRoute) => {
         },
         about: {
           '@id': personId,
+        },
+        primaryImageOfPage: {
+          '@id': imageId,
         },
         ...(route.path === '/'
           ? {
